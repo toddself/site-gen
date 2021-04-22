@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta http-equiv="content-type" content="text/html; charset=utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Whatever Todd‘s Cooking. In a blog">
+    <title>{{title}}</title>
+    <link rel="alternate" type="application/rss+xml" title="Whatever Todd's Cooking, but in RSS" href="https://whatever.todds.cooking/index.rss">
+    <script defer src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "82fdb0078f0f4fefbdc9c3788047400d"}'></script>
+    <style>{{>style}}</style>
+  </head>
+  <body>
+    <header><h1><a href="/" class="title">{{title}}</a></h1></header>
+    <main class="content">
+    <div style="padding-bottom: .2rem;">
+      <span class="subscribe">subscribe via email &raquo;</span>
+      <span class="hidden sf">
+      <form action="https://tinyletter.com/whatever_todds_cooking" method="post" target="popupwindow" onsubmit="window.open('https://tinyletter.com/whatever_todds_cooking', 'popupwindow', 'scrollbars=yes,width=800,height=600');return true"><label for="tlemail">Enter your email address: <input type="text" style="width:140px" name="email" id="tlemail"</label> <input type="hidden" value="1" name="embed"/><input type="submit" value="Subscribe" /><a href="https://tinyletter.com" style="font-size: .8rem;" target="_blank">powered by TinyLetter</a></form>
+      </span>
+    </div>
+<dl>
+  {{#each tags}}
+  <dt id="{{@key}}">{{@key}}</dt>
+  <dd>
+    <ul>
+      {{#each this}}
+        <li><a href="{{this.url}}">{{{this.title}}}</a></li>
+      {{/each}}
+    </ul>
+  </dd>
+  {{/each}}
+</dl>
+    </main>
+    <footer class="content">Find me on: <a href="https://instagram.com/@whatever_todds_cooking">Instagram</a> <a href="httsp://twitter.com/@todds_cooking/">Twitter</a><br>All content copyright © 2021, License: <a href="https://creativecommons.org/licenses/by-nc-nd/4.0/">Attribution-NonCommercial-NoDerivatives 4.0 International</a> Source: <a href="https://github.com/toddself/whatever.todds.cooking">github</a></footer>
+    <script>
+    const f = document.querySelector('.sf');
+    const h = 'hidden';
+    document.querySelector('.subscribe').addEventListener('click', () => {
+      if (!f) return
+      if (f.classList.contains(h)) {
+        f.classList.remove(h)
+      } else {
+        f.classList.add(h)
+      }
+    })
+    </script>
+  </body>
+</html>

@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <atom:link href="https://whatever.todds.cooking/index.rss" rel="self" type="application/rss+xml" />
+    <title>{{title}}</title>
+    <link>https://whatever.todds.cooking</link>
+    <description>A blog about whatever, todd's cooking</description>
+    <language>en-US</language>
+    <copyright>Copyright {{year}} whatever.todds.cooking</copyright>
+    <lastBuildDate>{{pub_date}}</lastBuildDate>
+    <generator>whatever.todds.cooking</generator>
+    <ttl>40</ttl>
+    {{#each entries}}
+    <item>
+      <title>{{{this.title}}}</title>
+      <description>{{this.description}}</description>
+      <pubDate>{{this.modified}}</pubDate>
+      <guid>https://whatever.todds.cooking/{{this.url}}</guid>
+      <link>https://whatever.todds.cooking/{{this.url}}</link>
+      <source url="https://whatever.todds.cooking">whatever, todd's cooking</source>
+    </item>
+    {{/each}}
+  </channel>
+</rss>
