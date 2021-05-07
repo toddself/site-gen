@@ -1,0 +1,44 @@
+name: Release
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install Rust Stable
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+      - name: Generate Changelog
+        run: git log $(git describe --tags --abbrev=0)..HEAD --pretty=format:"%s" -i -E --grep="^(\[INTERNAL\]|\[FEATURE\]|\[FIX\]|\[DOC\])*\[FEATURE\]" > release.txt
+      - name: Bump Version and Push Tag
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.tag_version.outputs.new_tag }}
+          release_name: ${{ steps.tag_version.outputs.new_tag }}
+          body: ${{ steps.tag_version.outputs.changelog }}
+      - name: Build Binary
+        uses: actions-rs/toolchain@v1
+        with:
+          command: build
+          args: --release
+      - name: Compress Binary
+        run: xz -z target/release/blog-builder && mv target/release/blog-builder.xz target/release/blog-builder-x86_64-unknown-linux-gnu.xz
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            release.txt
+            target/release/blog-builder-x86_64-unknown-linux-gnu.xz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+
+        
