@@ -1,10 +1,8 @@
 name: Release
 on:
-  workflow_run:
-    workflows: ["Run Tests"]
-    branches: [main]
-    types:
-      - completed
+  push:
+    tags:
+      - '*'
 
 jobs:
   publish:
@@ -29,6 +27,10 @@ jobs:
         with:
           toolchain: stable
           override: true
+      - name: Test
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
       - name: Build Binary
         uses: actions-rs/cargo@v1
         with:
