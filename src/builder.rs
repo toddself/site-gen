@@ -64,19 +64,24 @@ const HEADER_DELIMITER: &str = "---";
 const DATE_FORMAT: &str = "%A, %b %e, %Y";
 
 impl<'a> Builder<'a> {
-    pub fn new(s: &'a str, d: &'a str, t: &'a str, c: i32) -> Result<Builder<'a>, Box<dyn Error>> {
-        let src_dir = path::Path::new(s);
-        let dest_dir = path::Path::new(d);
-        let template_dir = path::Path::new(t);
+    pub fn new(
+        src_path: &'a str,
+        dest_path: &'a str,
+        template_path: &'a str,
+        entries_per_page: i32,
+    ) -> Result<Builder<'a>, Box<dyn Error>> {
+        let src_dir = path::Path::new(src_path);
+        let dest_dir = path::Path::new(dest_path);
+        let template_dir = path::Path::new(template_path);
 
         if src_dir.is_dir() == false {
-            let msg = format!("src dir ({}) is not a dir", s);
+            let msg = format!("src dir ({}) is not a dir", src_path);
             let e = BuilderDirError::new(msg.as_str());
             return Err(e.into());
         }
 
         if template_dir.is_dir() == false {
-            let msg = format!("template dir ({}) is not a dir", t);
+            let msg = format!("template dir ({}) is not a dir", template_path);
             let e = BuilderDirError::new(msg.as_str());
             return Err(e.into());
         }
@@ -86,13 +91,13 @@ impl<'a> Builder<'a> {
             Err(e) => return Err(e.into()),
         }
 
-        let files = match get_entries(s) {
+        let files = match get_entries(src_path) {
             Ok(f) => f,
             Err(_e) => vec![],
         };
 
         let mut hbs = Handlebars::new();
-        let templates: Vec<path::PathBuf> = match get_entries(t) {
+        let templates: Vec<path::PathBuf> = match get_entries(template_path) {
             Ok(t) => t,
             Err(_e) => vec![],
         };
@@ -118,7 +123,7 @@ impl<'a> Builder<'a> {
             template_dir,
             files,
             entries: vec![],
-            num_per_page: c,
+            num_per_page: entries_per_page,
             hbs,
         })
     }
