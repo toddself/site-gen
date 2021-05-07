@@ -15,7 +15,7 @@ pub fn parse_date(date: &str) -> DateTime<FixedOffset> {
 
 pub fn get_entries(src: &str) -> io::Result<Vec<PathBuf>> {
     let mut entries: Vec<_> = vec![];
-    for res in read_dir(src) {
+    if let Ok(res) = read_dir(src) {
         for entry in res {
             match entry {
                 Ok(e) => {

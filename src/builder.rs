@@ -74,13 +74,13 @@ impl<'a> Builder<'a> {
         let dest_dir = path::Path::new(dest_path);
         let template_dir = path::Path::new(template_path);
 
-        if src_dir.is_dir() == false {
+        if !src_dir.is_dir() {
             let msg = format!("src dir ({}) is not a dir", src_path);
             let e = BuilderDirError::new(msg.as_str());
             return Err(e.into());
         }
 
-        if template_dir.is_dir() == false {
+        if !template_dir.is_dir() {
             let msg = format!("template dir ({}) is not a dir", template_path);
             let e = BuilderDirError::new(msg.as_str());
             return Err(e.into());
@@ -105,7 +105,7 @@ impl<'a> Builder<'a> {
         for tpl_path in templates.iter() {
             let filename = tpl_path
                 .to_str()
-                .expect(format!("Invalid unicode in filename: {:?}", tpl_path).as_str());
+                .unwrap_or_else(|| panic!("Invalid unicode in filename: {:?}", tpl_path));
 
             let name = match tpl_path.iter().last() {
                 Some(u) => match u.to_str() {
@@ -138,7 +138,7 @@ impl<'a> Builder<'a> {
             let ad = a.modified.signed_duration_since(b.modified);
             bd.cmp(&ad)
         });
-        Ok(self.build_blog()?)
+        self.build_blog()
     }
 
     fn build_blog(&self) -> Result<(), Box<(dyn Error + 'static)>> {
@@ -212,7 +212,7 @@ impl<'a> Builder<'a> {
 
             // get whole chunk of posts to generate the paginated indexes
             let entries: Vec<_> = entry_set
-                .into_iter()
+                .iter()
                 .map(|entry| {
                     json!({
                         "title": entry.title,
@@ -266,7 +266,7 @@ impl<'a> Builder<'a> {
         Ok(())
     }
 
-    fn parse_entry(&self, file: &path::PathBuf) -> Result<FileEntry, std::io::Error> {
+    fn parse_entry(&self, file: &path::Path) -> Result<FileEntry, std::io::Error> {
         let filename = file.to_str().unwrap();
         let buf = fs::read_to_string(filename).unwrap();
 
@@ -298,7 +298,7 @@ impl<'a> Builder<'a> {
                         .collect()
                 }
                 Some(&"title:") => {
-                    title = String::from(data_value);
+                    title = data_value;
                 }
                 _ => (),
             }
