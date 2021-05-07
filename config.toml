@@ -1,5 +1,0 @@
-[build]
-
-[target.x64_64-unknown-linux-gnu]
-llvm-config = "/usr/local/opt/llvm/bin/llvm-config"
-linker = "/usr/local/opt/llvm/bin/lld"

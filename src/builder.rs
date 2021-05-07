@@ -11,7 +11,7 @@ use serde_json::{json, Value};
 use truncate_string_at_whitespace::truncate_text;
 use voca_rs::strip::strip_tags;
 
-use crate::helpers::{get_entries, parse_date, parse_tags};
+use crate::helpers::{get_entries, parse_date};
 
 #[derive(Debug)]
 pub struct BuilderDirError {
@@ -287,7 +287,10 @@ impl<'a> Builder<'a> {
                     pub_date = parse_date(data_value.as_str());
                 }
                 Some(&"tags:") => {
-                    tag_list = parse_tags(data_value.as_str());
+                    tag_list = data_value
+                        .split(',')
+                        .map(|e| String::from(e.trim()))
+                        .collect()
                 }
                 Some(&"title:") => {
                     title = String::from(data_value);

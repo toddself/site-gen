@@ -13,13 +13,51 @@ pub fn parse_date(date: &str) -> DateTime<FixedOffset> {
     }
 }
 
-pub fn parse_tags(tags: &str) -> Vec<String> {
-    tags.split(',').map(|e| String::from(e.trim())).collect()
+pub fn get_entries(src: &str) -> io::Result<Vec<PathBuf>> {
+    let mut entries: Vec<_> = vec![];
+    for res in read_dir(src) {
+        for entry in res {
+            match entry {
+                Ok(e) => {
+                    if e.file_type()?.is_file() {
+                        entries.push(e.path());
+                    }
+                }
+                Err(_e) => (),
+            }
+        }
+    }
+    Ok(entries)
 }
 
-pub fn get_entries(src: &str) -> io::Result<Vec<PathBuf>> {
-    let entries = read_dir(src)?
-        .map(|res| res.map(|e| e.path()))
-        .collect::<Result<Vec<_>, io::Error>>()?;
-    Ok(entries)
+#[cfg(test)]
+mod tests {
+    use super::*;
+    const DATE_FORMAT: &str = "%A, %b %e, %Y";
+
+    #[test]
+    fn parses_rfc3339_input() {
+        let date = "2021-05-07T00:00:00-07:00";
+        let parsed = parse_date(date);
+        let display = parsed.format(DATE_FORMAT).to_string();
+        assert_eq!(display, "Friday, May  7, 2021");
+    }
+
+    #[test]
+    fn returns_current_time_on_bad_input() {
+        let date = "Wednesday, May  8, 2021";
+        let local = DateTime::<FixedOffset>::from(Local::now());
+        let parsed = parse_date(date);
+        let display_local = local.format(DATE_FORMAT).to_string();
+        let display_parsed = parsed.format(DATE_FORMAT).to_string();
+        assert_ne!(date, display_parsed);
+        assert_eq!(display_local, display_parsed);
+    }
+
+    #[test]
+    fn reads_only_files() -> std::io::Result<()> {
+        let entries = get_entries("fixtures/data")?;
+        assert_eq!(entries.len(), 3);
+        Ok(())
+    }
 }
