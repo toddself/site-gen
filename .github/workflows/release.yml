@@ -24,7 +24,7 @@ jobs:
           command: build
           args: --release
       - name: Compress Binary
-        run: xz -z target/release/blog-builder && mv target/release/blog-builder.xz target/release/blog-builder-x86_64-unknown-linux-gnu.xz
+        run: bzip2 -f target/release/blog-builder && mv target/release/blog-builder.bz2 target/release/blog-builder-x86_64-unknown-linux-gnu.bz2
       - name: Release
         uses: softprops/action-gh-release@v1
         with:
