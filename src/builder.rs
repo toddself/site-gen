@@ -1,25 +1,28 @@
-use std::{error::Error, fmt, result::Result};
-use std::path;
-use std::fs;
-use std::str;
 use std::collections::BTreeMap;
+use std::fs;
+use std::path;
+use std::str;
+use std::{error::Error, fmt, result::Result};
 
-use comrak::{markdown_to_html, ComrakOptions};
 use chrono::{DateTime, FixedOffset, Local};
-use voca_rs::strip::strip_tags;
+use comrak::{markdown_to_html, ComrakOptions};
 use handlebars::Handlebars;
 use serde_json::{json, Value};
+use truncate_string_at_whitespace::truncate_text;
+use voca_rs::strip::strip_tags;
 
-use crate::helpers::{parse_date, parse_tags, get_entries, truncate_text};
+use crate::helpers::{get_entries, parse_date, parse_tags};
 
 #[derive(Debug)]
 pub struct BuilderDirError {
-    details: String
+    details: String,
 }
 
 impl BuilderDirError {
-    fn new (msg: &str) -> BuilderDirError {
-        BuilderDirError{details: msg.to_string()}
+    fn new(msg: &str) -> BuilderDirError {
+        BuilderDirError {
+            details: msg.to_string(),
+        }
     }
 }
 
@@ -37,7 +40,7 @@ impl Error for BuilderDirError {
 
 #[derive(Debug)]
 pub struct FileEntry {
-    pub modified: DateTime<FixedOffset>, 
+    pub modified: DateTime<FixedOffset>,
     pub filename: String,
     pub raw_text: String,
     pub contents: String,
@@ -47,9 +50,9 @@ pub struct FileEntry {
 }
 
 #[derive(Debug)]
-pub struct Builder <'a> {
+pub struct Builder<'a> {
     src_dir: &'a path::Path,
-    dest_dir: &'a  path::Path,
+    dest_dir: &'a path::Path,
     files: Vec<path::PathBuf>,
     entries: Vec<FileEntry>,
     num_per_page: i32,
@@ -57,8 +60,8 @@ pub struct Builder <'a> {
     hbs: Handlebars<'a>,
 }
 
-const HEADER_DELIMITER:&str = "---";
-const DATE_FORMAT:&str = "%A, %b %e, %Y";
+const HEADER_DELIMITER: &str = "---";
+const DATE_FORMAT: &str = "%A, %b %e, %Y";
 
 impl<'a> Builder<'a> {
     pub fn new(s: &'a str, d: &'a str, t: &'a str, c: i32) -> Result<Builder<'a>, Box<dyn Error>> {
@@ -78,11 +81,9 @@ impl<'a> Builder<'a> {
             return Err(e.into());
         }
 
-        match fs::DirBuilder::new()
-            .recursive(true)
-            .create(dest_dir) {
-                Ok(d) => d,
-                Err(e) => return Err(e.into())
+        match fs::DirBuilder::new().recursive(true).create(dest_dir) {
+            Ok(d) => d,
+            Err(e) => return Err(e.into()),
         }
 
         let files = match get_entries(s) {
@@ -91,13 +92,14 @@ impl<'a> Builder<'a> {
         };
 
         let mut hbs = Handlebars::new();
-        let templates:Vec<path::PathBuf> = match get_entries(t) {
+        let templates: Vec<path::PathBuf> = match get_entries(t) {
             Ok(t) => t,
             Err(_e) => vec![],
         };
 
         for tpl_path in templates.iter() {
-            let filename = tpl_path.to_str() 
+            let filename = tpl_path
+                .to_str()
                 .expect(format!("Invalid unicode in filename: {:?}", tpl_path).as_str());
 
             let name = match tpl_path.iter().last() {
@@ -110,7 +112,7 @@ impl<'a> Builder<'a> {
             hbs.register_template_file(name, tpl_path)?;
         }
 
-        Ok(Builder{
+        Ok(Builder {
             src_dir,
             dest_dir,
             template_dir,
@@ -139,7 +141,7 @@ impl<'a> Builder<'a> {
         let num_per_page = self.num_per_page as usize;
 
         // create a list of all the indexes we're gonna output
-        let mut pagination:Vec<_> = vec![];
+        let mut pagination: Vec<_> = vec![];
         if self.entries.len() > num_per_page {
             let mut num_pages = self.entries.len() / num_per_page;
             if self.entries.len() % num_per_page > 0 {
@@ -160,8 +162,8 @@ impl<'a> Builder<'a> {
         }
 
         let now = Local::now();
-        let mut rss_data:Vec<_> = vec![];
-        let mut tag_map:BTreeMap<String, Vec<Value>> = BTreeMap::new();
+        let mut rss_data: Vec<_> = vec![];
+        let mut tag_map: BTreeMap<String, Vec<Value>> = BTreeMap::new();
 
         for entry_set in self.entries.chunks(num_per_page) {
             for entry in entry_set {
@@ -198,19 +200,24 @@ impl<'a> Builder<'a> {
                         Some(tl) => tl.push(tag_entry),
                         None => {
                             tag_map.insert(String::from(tag), vec![tag_entry]);
-                        },
+                        }
                     };
                 }
             }
 
             // get whole chunk of posts to generate the paginated indexes
-            let entries:Vec<_> = entry_set.into_iter().map(|entry| json!({
-                "title": entry.title,
-                "contents": entry.contents,
-                "tags": entry.tags,
-                "url": entry.url,
-                "modified": entry.modified.format(DATE_FORMAT).to_string(),
-            })).collect();
+            let entries: Vec<_> = entry_set
+                .into_iter()
+                .map(|entry| {
+                    json!({
+                        "title": entry.title,
+                        "contents": entry.contents,
+                        "tags": entry.tags,
+                        "url": entry.url,
+                        "modified": entry.modified.format(DATE_FORMAT).to_string(),
+                    })
+                })
+                .collect();
 
             let page_data = json!({
                 "title": "whatever todd's cooking",
@@ -245,7 +252,7 @@ impl<'a> Builder<'a> {
         fs::write(rss_fn, rss_feed)?;
 
         // generate tag list
-        let tags_data = json!({"tags": tag_map});
+        let tags_data = json!({ "tags": tag_map });
         let tags_fn = self.dest_dir.join("tags.html");
         let tags_page = self.hbs.render("tag-list", &tags_data)?;
         println!("Writing tags to {:?}", tags_fn);
@@ -259,33 +266,33 @@ impl<'a> Builder<'a> {
         let buf = fs::read_to_string(filename).unwrap();
 
         let mut pub_date = DateTime::<FixedOffset>::from(Local::now());
-        let mut tag_list:Vec<String> = vec![];
+        let mut tag_list: Vec<String> = vec![];
         let mut title = String::new();
 
         let mut sep_count = 0;
         for line in buf.lines() {
-                if line == HEADER_DELIMITER {
+            if line == HEADER_DELIMITER {
                 sep_count += 1;
                 if sep_count == 2 {
                     break;
                 }
             }
 
-            let elements:Vec<&str> = line.split(' ').collect();
+            let elements: Vec<&str> = line.split(' ').collect();
             let data_type = elements.get(0);
             let data_value = elements[1..].join(" ");
 
             match data_type {
                 Some(&"date:") => {
                     pub_date = parse_date(data_value.as_str());
-                },
+                }
                 Some(&"tags:") => {
                     tag_list = parse_tags(data_value.as_str());
-                },
+                }
                 Some(&"title:") => {
                     title = String::from(data_value);
                 }
-                _ => ()
+                _ => (),
             }
         }
 
@@ -308,7 +315,7 @@ impl<'a> Builder<'a> {
 
         println!("Parsed {:?} as {}", file, title);
 
-        let entry = FileEntry{
+        let entry = FileEntry {
             modified: pub_date,
             filename: String::from(filename),
             tags: tag_list,
@@ -321,4 +328,3 @@ impl<'a> Builder<'a> {
         Ok(entry)
     }
 }
-
