@@ -336,3 +336,14 @@ impl<'a> Builder<'a> {
         Ok(entry)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn errors_on_missing_src_dir() {
+        let b = Builder::new("nothing", ".", ".", 20);
+        assert!(b.is_err());
+    }
+}
