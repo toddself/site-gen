@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 use std::fs;
-use std::path;
+use std::path::{Path, PathBuf};
 use std::str;
 use std::{error::Error, fmt, result::Result};
 
@@ -14,27 +14,26 @@ use voca_rs::strip::strip_tags;
 use crate::helpers::{get_entries, parse_date};
 
 #[derive(Debug)]
-pub struct BuilderDirError {
-    details: String,
+pub struct BuilderDirError<'a> {
+    details: &'a PathBuf,
 }
 
-impl BuilderDirError {
-    fn new(msg: &str) -> BuilderDirError {
-        BuilderDirError {
-            details: msg.to_string(),
-        }
+#[allow(dead_code)]
+impl<'a> BuilderDirError<'a> {
+    fn new(msg: &PathBuf) -> BuilderDirError {
+        BuilderDirError { details: msg }
     }
 }
 
-impl fmt::Display for BuilderDirError {
+impl<'a> fmt::Display for BuilderDirError<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.details)
+        write!(f, "{:?}", self.details)
     }
 }
 
-impl Error for BuilderDirError {
+impl<'a> Error for BuilderDirError<'a> {
     fn description(&self) -> &str {
-        &self.details
+        self.details.to_str().unwrap()
     }
 }
 
@@ -51,12 +50,12 @@ pub struct FileEntry {
 
 #[derive(Debug)]
 pub struct Builder<'a> {
-    src_dir: &'a path::Path,
-    dest_dir: &'a path::Path,
-    files: Vec<path::PathBuf>,
+    src_dir: &'a Path,
+    dest_dir: &'a Path,
+    files: Vec<PathBuf>,
     entries: Vec<FileEntry>,
-    num_per_page: i32,
-    template_dir: &'a path::Path,
+    num_per_page: usize,
+    template_dir: &'a Path,
     hbs: Handlebars<'a>,
 }
 
@@ -65,39 +64,23 @@ const DATE_FORMAT: &str = "%A, %b %e, %Y";
 
 impl<'a> Builder<'a> {
     pub fn new(
-        src_path: &'a str,
-        dest_path: &'a str,
-        template_path: &'a str,
-        entries_per_page: i32,
+        src_dir: &'a PathBuf,
+        dest_dir: &'a PathBuf,
+        template_dir: &'a PathBuf,
+        entries_per_page: usize,
     ) -> Result<Builder<'a>, Box<dyn Error>> {
-        let src_dir = path::Path::new(src_path);
-        let dest_dir = path::Path::new(dest_path);
-        let template_dir = path::Path::new(template_path);
-
-        if !src_dir.is_dir() {
-            let msg = format!("src dir ({}) is not a dir", src_path);
-            let e = BuilderDirError::new(msg.as_str());
-            return Err(e.into());
-        }
-
-        if !template_dir.is_dir() {
-            let msg = format!("template dir ({}) is not a dir", template_path);
-            let e = BuilderDirError::new(msg.as_str());
-            return Err(e.into());
-        }
-
         match fs::DirBuilder::new().recursive(true).create(dest_dir) {
             Ok(d) => d,
             Err(e) => return Err(e.into()),
         }
 
-        let files = match get_entries(src_path) {
+        let files = match get_entries(src_dir) {
             Ok(f) => f,
             Err(_e) => vec![],
         };
 
         let mut hbs = Handlebars::new();
-        let templates: Vec<path::PathBuf> = match get_entries(template_path) {
+        let templates: Vec<PathBuf> = match get_entries(template_dir) {
             Ok(t) => t,
             Err(_e) => vec![],
         };
@@ -266,7 +249,7 @@ impl<'a> Builder<'a> {
         Ok(())
     }
 
-    fn parse_entry(&self, file: &path::Path) -> Result<FileEntry, std::io::Error> {
+    fn parse_entry(&self, file: &Path) -> Result<FileEntry, std::io::Error> {
         let filename = file.to_str().unwrap();
         let buf = fs::read_to_string(filename).unwrap();
 
