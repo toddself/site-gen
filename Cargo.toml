@@ -1,6 +1,6 @@
 [package]
 name = "blog-builder"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Todd Kennedy <todd@selfassembled.org>"]
 edition = "2018"
 
