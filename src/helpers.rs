@@ -13,7 +13,7 @@ pub fn parse_date(date: &str) -> DateTime<FixedOffset> {
     }
 }
 
-pub fn get_entries(src: &str) -> io::Result<Vec<PathBuf>> {
+pub fn get_entries(src: &PathBuf) -> io::Result<Vec<PathBuf>> {
     let mut entries: Vec<_> = vec![];
     if let Ok(res) = read_dir(src) {
         for entry in res {
@@ -56,7 +56,9 @@ mod tests {
 
     #[test]
     fn reads_only_files() -> std::io::Result<()> {
-        let entries = get_entries("fixtures/data")?;
+        let mut fixtures = PathBuf::new();
+        fixtures.push("fixtures/data");
+        let entries = get_entries(&fixtures)?;
         assert_eq!(entries.len(), 3);
         Ok(())
     }
