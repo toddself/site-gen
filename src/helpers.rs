@@ -1,10 +1,10 @@
 use chrono::{DateTime, FixedOffset, Local};
 use std::fs::read_dir;
 use std::io;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 pub fn parse_date(date: &str) -> DateTime<FixedOffset> {
-    match DateTime::parse_from_rfc3339(&date) {
+    match DateTime::parse_from_rfc3339(date) {
         Ok(d) => d,
         Err(_e) => {
             println!("Unable to parse {} as a date", date);
@@ -13,7 +13,7 @@ pub fn parse_date(date: &str) -> DateTime<FixedOffset> {
     }
 }
 
-pub fn get_entries(src: &PathBuf) -> io::Result<Vec<PathBuf>> {
+pub fn get_entries(src: &Path) -> io::Result<Vec<PathBuf>> {
     let mut entries: Vec<_> = vec![];
     if let Ok(res) = read_dir(src) {
         for entry in res {

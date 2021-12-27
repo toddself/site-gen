@@ -15,12 +15,12 @@ use crate::helpers::{get_entries, parse_date};
 
 #[derive(Debug)]
 pub struct BuilderDirError<'a> {
-    details: &'a PathBuf,
+    details: &'a Path,
 }
 
 #[allow(dead_code)]
 impl<'a> BuilderDirError<'a> {
-    fn new(msg: &PathBuf) -> BuilderDirError {
+    fn new(msg: &Path) -> BuilderDirError {
         BuilderDirError { details: msg }
     }
 }
@@ -50,12 +50,10 @@ pub struct FileEntry {
 
 #[derive(Debug)]
 pub struct Builder<'a> {
-    src_dir: &'a Path,
     dest_dir: &'a Path,
     files: Vec<PathBuf>,
     entries: Vec<FileEntry>,
     num_per_page: usize,
-    template_dir: &'a Path,
     hbs: Handlebars<'a>,
 }
 
@@ -64,9 +62,9 @@ const DATE_FORMAT: &str = "%A, %b %e, %Y";
 
 impl<'a> Builder<'a> {
     pub fn new(
-        src_dir: &'a PathBuf,
-        dest_dir: &'a PathBuf,
-        template_dir: &'a PathBuf,
+        src_dir: &'a Path,
+        dest_dir: &'a Path,
+        template_dir: &'a Path,
         entries_per_page: usize,
     ) -> Result<Builder<'a>, Box<dyn Error>> {
         match fs::DirBuilder::new().recursive(true).create(dest_dir) {
@@ -101,9 +99,7 @@ impl<'a> Builder<'a> {
         }
 
         Ok(Builder {
-            src_dir,
             dest_dir,
-            template_dir,
             files,
             entries: vec![],
             num_per_page: entries_per_page,
