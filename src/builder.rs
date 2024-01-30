@@ -55,6 +55,7 @@ pub struct Builder<'a> {
     entries: Vec<FileEntry>,
     num_per_page: usize,
     hbs: Handlebars<'a>,
+    title: String
 }
 
 const HEADER_DELIMITER: &str = "---";
@@ -66,6 +67,7 @@ impl<'a> Builder<'a> {
         dest_dir: &'a Path,
         template_dir: &'a Path,
         entries_per_page: usize,
+        title: String,
     ) -> Result<Builder<'a>, Box<dyn Error>> {
         match fs::DirBuilder::new().recursive(true).create(dest_dir) {
             Ok(d) => d,
@@ -104,6 +106,7 @@ impl<'a> Builder<'a> {
             entries: vec![],
             num_per_page: entries_per_page,
             hbs,
+            title
         })
     }
 
@@ -204,7 +207,7 @@ impl<'a> Builder<'a> {
                 .collect();
 
             let page_data = json!({
-                "title": "whatever todd's cooking",
+                "title": &self.title,
                 "contents": entries,
                 "pagination": pagination,
                 "year": now.format("%Y").to_string(),
@@ -322,7 +325,7 @@ mod tests {
 
     #[test]
     fn errors_on_missing_src_dir() {
-        let b = Builder::new("nothing", ".", ".", 20);
+        let b = Builder::new(&Path::new("nothing"), &Path::new("."), &Path::new("."), 20, "".to_string());
         assert!(b.is_err());
     }
 }

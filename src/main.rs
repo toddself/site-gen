@@ -27,11 +27,14 @@ struct Opt {
 
     #[structopt(parse(from_os_str), help = "Set the output directory")]
     dest: PathBuf,
+
+    #[structopt(short, long)]
+    title: String
 }
 
 fn main() {
     let opts = Opt::from_args();
-    let mut b = Builder::new(&opts.src, &opts.dest, &opts.template_dir, opts.entries).unwrap();
+    let mut b = Builder::new(&opts.src, &opts.dest, &opts.template_dir, opts.entries, opts.title).unwrap();
     match b.build() {
         Ok(_a) => println!("Blog built!"),
         Err(e) => println!("{:?}", e),
