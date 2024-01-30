@@ -12,27 +12,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
-      - name: Install Rust Stable
-        uses: actions-rs/toolchain@v1
+      - uses: gdcorp-action-public-forks/rust-toolchain@8746a0d603bb056878fbe89fe7091bbc7aae3676
         with:
           toolchain: stable
-          override: true
-          components: rustfmt, clippy
-      - name: Run Cargo Check
-        uses: actions-rs/cargo@v1
-        with:
-          command: check
-      - name: Run Cargo Format
-        uses: actions-rs/cargo@v1
-        with:
-          command: fmt
-          args: --all -- --check
-      - name: Run Clippy
-        uses: actions-rs/cargo@v1
-        with:
-          command: clippy
-          args: -- -Dwarnings
-      - name: Run Cargo Test
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
+      - name: Tests
+        run: |
+          cargo test
