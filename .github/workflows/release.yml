@@ -43,5 +43,5 @@ jobs:
         uses: gdcorp-action-public-forks/ncipollo-release-action@d2ddde0acb4d51bbf4892910dc296ae6efdc1a13
         with: 
           tag: ${{ inputs.tag }}
-          artifacts: "/bin-tmp/blog-builder-linux-x86_64"
+          artifacts: "./bin-tmp/blog-builder-linux-x86_64"
           artifactErrorsFailBuild: true
