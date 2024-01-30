@@ -15,7 +15,7 @@ jobs:
         with:
           ref: ${{ inputs.tag }}
       - name: Install Rust Stable
-      - uses: gdcorp-action-public-forks/rust-toolchain@8746a0d603bb056878fbe89fe7091bbc7aae3676
+        uses: gdcorp-action-public-forks/rust-toolchain@8746a0d603bb056878fbe89fe7091bbc7aae3676
         with:
           toolchain: stable
           targets: x86_64-apple-darwin,aarch64-apple-darwin,x86_64-unknown-linux-gnu
