@@ -9,7 +9,7 @@ on:
 
 jobs:
   publish:
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
         with:
@@ -18,7 +18,6 @@ jobs:
         uses: gdcorp-action-public-forks/rust-toolchain@8746a0d603bb056878fbe89fe7091bbc7aae3676
         with:
           toolchain: stable
-          targets: x86_64-apple-darwin,aarch64-apple-darwin,x86_64-unknown-linux-gnu
       - uses: actions/cache@88522ab9f39a2ea568f7027eddc7d8d8bc9d59c8 # 3.3.1
         env:
           BUILD_TYPE: release
@@ -36,18 +35,13 @@ jobs:
             cargo-${{ env.BUILD_TYPE }}-
       - name: Build
         run: |
-          cargo build --release --target x86_64-unknown-linux-gnu
-          cargo build --release --target x86_64-apple-darwin
-          cargo build --release --target aarch64-apple-darwin
+          cargo build --release
           mkdir -p bin-tmp
           cp ./target/release/blog-builder bin-tmp/blog-builder-linux-x86_64
-          cp ./target/x86_64-apple-darwin/release/blog-builder bin-tmp/blog-builder-darwin-x86_64
-          cp ./target/aarch64-apple-darwin/release/blog-builder bin-tmp/blog-builder-darwin-arm64
 
       - name: Create release
         uses: gdcorp-action-public-forks/ncipollo-release-action@d2ddde0acb4d51bbf4892910dc296ae6efdc1a13
         with: 
           tag: ${{ inputs.tag }}
-          artifacts: "/bin-tmp/blog-builder-*"
+          artifacts: "/bin-tmp/blog-builder-linux-x86_64"
           artifactErrorsFailBuild: true
-
