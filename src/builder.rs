@@ -228,7 +228,7 @@ impl<'a> Builder<'a> {
 
         // generate rss with latest data
         let rss_data = json!({
-            "title": "whatever todd's cooking",
+            "title": &self.title,
             "entries": rss_data,
             "year": now.format("%Y").to_string(),
             "pub_date": now.format("%a, %e %b, %Y %T %Z").to_string(),
