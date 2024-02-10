@@ -28,13 +28,24 @@ struct Opt {
     #[structopt(parse(from_os_str), help = "Set the output directory")]
     dest: PathBuf,
 
-    #[structopt(short, long)]
-    title: String
+    #[structopt(long, help = "Set the blog title")]
+    title: String,
+
+    #[structopt(long, help = "How long should snippets in feeds be")]
+    truncate: Option<u32>,
 }
 
 fn main() {
     let opts = Opt::from_args();
-    let mut b = Builder::new(&opts.src, &opts.dest, &opts.template_dir, opts.entries, opts.title).unwrap();
+    let mut b = Builder::new(
+        &opts.src,
+        &opts.dest,
+        &opts.template_dir,
+        opts.entries,
+        opts.title,
+        opts.truncate,
+    )
+    .unwrap();
     match b.build() {
         Ok(_a) => println!("Blog built!"),
         Err(e) => println!("{:?}", e),

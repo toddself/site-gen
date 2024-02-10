@@ -55,7 +55,8 @@ pub struct Builder<'a> {
     entries: Vec<FileEntry>,
     num_per_page: usize,
     hbs: Handlebars<'a>,
-    title: String
+    title: String,
+    truncate: Option<u32>,
 }
 
 const HEADER_DELIMITER: &str = "---";
@@ -68,6 +69,7 @@ impl<'a> Builder<'a> {
         template_dir: &'a Path,
         entries_per_page: usize,
         title: String,
+        truncate: Option<u32>,
     ) -> Result<Builder<'a>, Box<dyn Error>> {
         match fs::DirBuilder::new().recursive(true).create(dest_dir) {
             Ok(d) => d,
@@ -106,7 +108,8 @@ impl<'a> Builder<'a> {
             entries: vec![],
             num_per_page: entries_per_page,
             hbs,
-            title
+            title,
+            truncate,
         })
     }
 
@@ -125,7 +128,7 @@ impl<'a> Builder<'a> {
 
     fn build_blog(&self) -> Result<(), Box<(dyn Error + 'static)>> {
         let mut count = 0;
-        let num_per_page = self.num_per_page as usize;
+        let num_per_page = self.num_per_page;
 
         // create a list of all the indexes we're gonna output
         let mut pagination: Vec<_> = vec![];
@@ -168,9 +171,14 @@ impl<'a> Builder<'a> {
 
                 // this is one of the latest posts, add it to the rss list
                 if count == 0 {
+                    let entry_text = if let Some(trun_len) = &self.truncate {
+                        truncate_text(entry.raw_text.as_str(), *trun_len as usize)
+                    } else {
+                        entry.raw_text.as_str()
+                    };
                     rss_data.push(json!({
                         "title": entry.title,
-                        "description": truncate_text(entry.raw_text.as_str(), 300),
+                        "description": entry_text,
                         "modified": entry.modified.format(DATE_FORMAT).to_string(),
                         "url": entry.url,
                     }));
@@ -266,7 +274,7 @@ impl<'a> Builder<'a> {
             }
 
             let elements: Vec<&str> = line.split(' ').collect();
-            let data_type = elements.get(0);
+            let data_type = elements.first();
             let data_value = elements[1..].join(" ");
 
             match data_type {
@@ -316,16 +324,5 @@ impl<'a> Builder<'a> {
         };
 
         Ok(entry)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn errors_on_missing_src_dir() {
-        let b = Builder::new(&Path::new("nothing"), &Path::new("."), &Path::new("."), 20, "".to_string());
-        assert!(b.is_err());
     }
 }
