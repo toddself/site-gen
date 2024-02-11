@@ -1,53 +1,58 @@
+use std::fs;
+
+use clap::Parser;
+use color_eyre::Result;
+use serde::Deserialize;
+
 mod builder;
 mod helpers;
-use std::path::PathBuf;
-use structopt::StructOpt;
+use crate::builder::Builder;
 
-pub use crate::builder::Builder;
-
-#[derive(Debug, StructOpt)]
-#[structopt(name = "blog-builder", about = "a poorly named static site generator")]
+#[derive(Debug, Parser, Deserialize)]
+#[command(version, about, long_about = None)]
 struct Opt {
-    #[structopt(short, long, default_value = "20", help = "How many entries per page")]
-    entries: usize,
+    /// Path to config file
+    #[arg(short, long)]
+    config: Option<String>,
 
-    #[structopt(
-        short,
-        long,
-        default_value = "templates",
-        help = "Location of page templates"
-    )]
-    template_dir: PathBuf,
+    /// How many entries per page
+    #[arg(short, long, default_value = "20")]
+    entries: u8,
 
-    #[structopt(
-        parse(from_os_str),
-        help = "Set the source path for your markdown files"
-    )]
-    src: PathBuf,
+    /// Directory for templates
+    #[arg(short = 'p', long, default_value = "templates")]
+    template_dir: String,
 
-    #[structopt(parse(from_os_str), help = "Set the output directory")]
-    dest: PathBuf,
+    /// Source directory for markdown files
+    src: String,
 
-    #[structopt(long, help = "Set the blog title")]
+    /// Destination for HTML output
+    dest: String,
+
+    /// Title for the site
+    #[arg(short, long, default_value = "a blog")]
     title: String,
 
-    #[structopt(long, help = "How long should snippets in feeds be")]
+    /// How long should entries be in the RSS feed
+    #[arg(short = 'u', long)]
     truncate: Option<u32>,
 }
 
-fn main() {
-    let opts = Opt::from_args();
-    let mut b = Builder::new(
-        &opts.src,
-        &opts.dest,
-        &opts.template_dir,
-        opts.entries,
-        opts.title,
-        opts.truncate,
-    )
-    .unwrap();
+fn main() -> Result<()> {
+    let opts = Opt::parse();
+
+    let config_data = if let Some(config) = opts.config {
+        let data = fs::read_to_string(config)?;
+        toml::from_str(&data)?
+    } else {
+        opts
+    };
+
+    let mut b = Builder::new(config_data)?;
+
     match b.build() {
         Ok(_a) => println!("Blog built!"),
         Err(e) => println!("{:?}", e),
     };
+    Ok(())
 }
