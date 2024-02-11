@@ -2,9 +2,9 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::str;
-use std::{error::Error, fmt, result::Result};
 
 use chrono::{DateTime, FixedOffset, Local};
+use color_eyre::Result;
 use comrak::{markdown_to_html, ComrakOptions};
 use handlebars::Handlebars;
 use serde_json::{json, Value};
@@ -12,30 +12,7 @@ use truncate_string_at_whitespace::truncate_text;
 use voca_rs::strip::strip_tags;
 
 use crate::helpers::{get_entries, parse_date};
-
-#[derive(Debug)]
-pub struct BuilderDirError<'a> {
-    details: &'a Path,
-}
-
-#[allow(dead_code)]
-impl<'a> BuilderDirError<'a> {
-    fn new(msg: &Path) -> BuilderDirError {
-        BuilderDirError { details: msg }
-    }
-}
-
-impl<'a> fmt::Display for BuilderDirError<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?}", self.details)
-    }
-}
-
-impl<'a> Error for BuilderDirError<'a> {
-    fn description(&self) -> &str {
-        self.details.to_str().unwrap()
-    }
-}
+use crate::Opt;
 
 #[derive(Debug)]
 pub struct FileEntry {
@@ -49,40 +26,32 @@ pub struct FileEntry {
 }
 
 #[derive(Debug)]
-pub struct Builder<'a> {
-    dest_dir: &'a Path,
+pub struct Builder<'blog> {
+    opts: Opt,
     files: Vec<PathBuf>,
     entries: Vec<FileEntry>,
-    num_per_page: usize,
-    hbs: Handlebars<'a>,
-    title: String,
-    truncate: Option<u32>,
+    hbs: Handlebars<'blog>,
 }
 
 const HEADER_DELIMITER: &str = "---";
 const DATE_FORMAT: &str = "%A, %b %e, %Y";
 
-impl<'a> Builder<'a> {
-    pub fn new(
-        src_dir: &'a Path,
-        dest_dir: &'a Path,
-        template_dir: &'a Path,
-        entries_per_page: usize,
-        title: String,
-        truncate: Option<u32>,
-    ) -> Result<Builder<'a>, Box<dyn Error>> {
-        match fs::DirBuilder::new().recursive(true).create(dest_dir) {
+impl<'blog> Builder<'blog> {
+    pub fn new(opts: Opt) -> Result<Builder<'blog>> {
+        match fs::DirBuilder::new().recursive(true).create(&opts.dest) {
             Ok(d) => d,
             Err(e) => return Err(e.into()),
         }
 
-        let files = match get_entries(src_dir) {
+        let src = PathBuf::from(&opts.src);
+        let files = match get_entries(&src) {
             Ok(f) => f,
             Err(_e) => vec![],
         };
 
         let mut hbs = Handlebars::new();
-        let templates: Vec<PathBuf> = match get_entries(template_dir) {
+        let tmpl_src = PathBuf::from(&opts.template_dir);
+        let templates: Vec<PathBuf> = match get_entries(&tmpl_src) {
             Ok(t) => t,
             Err(_e) => vec![],
         };
@@ -103,17 +72,14 @@ impl<'a> Builder<'a> {
         }
 
         Ok(Builder {
-            dest_dir,
+            opts,
             files,
             entries: vec![],
-            num_per_page: entries_per_page,
             hbs,
-            title,
-            truncate,
         })
     }
 
-    pub fn build(&mut self) -> Result<(), Box<(dyn Error + 'static)>> {
+    pub fn build(&mut self) -> Result<()> {
         for file in self.files.iter() {
             let entry = self.parse_entry(file).unwrap();
             self.entries.push(entry);
@@ -126,15 +92,16 @@ impl<'a> Builder<'a> {
         self.build_blog()
     }
 
-    fn build_blog(&self) -> Result<(), Box<(dyn Error + 'static)>> {
+    fn build_blog(&self) -> Result<()> {
         let mut count = 0;
-        let num_per_page = self.num_per_page;
+        let num_per_page = self.opts.entries;
 
         // create a list of all the indexes we're gonna output
         let mut pagination: Vec<_> = vec![];
-        if self.entries.len() > num_per_page {
-            let mut num_pages = self.entries.len() / num_per_page;
-            if self.entries.len() % num_per_page > 0 {
+        let num_entries = self.entries.len() as u8;
+        if num_entries > num_per_page {
+            let mut num_pages = num_entries / num_per_page;
+            if num_entries % num_per_page > 0 {
                 num_pages += 1;
             }
             for index in 0..num_pages {
@@ -154,8 +121,9 @@ impl<'a> Builder<'a> {
         let now = Local::now();
         let mut rss_data: Vec<_> = vec![];
         let mut tag_map: BTreeMap<String, Vec<Value>> = BTreeMap::new();
+        let dest = PathBuf::from(&self.opts.dest);
 
-        for entry_set in self.entries.chunks(num_per_page) {
+        for entry_set in self.entries.chunks(num_per_page.into()) {
             for entry in entry_set {
                 let post_data = json!({
                     "title": entry.title,
@@ -165,13 +133,13 @@ impl<'a> Builder<'a> {
                     "modified": entry.modified.format(DATE_FORMAT).to_string(),
                 });
                 let rendered = self.hbs.render("entry", &post_data)?;
-                let output_fn = self.dest_dir.join(entry.url.as_str());
+                let output_fn = dest.join(entry.url.as_str());
                 println!("Writing {} to {:?}", entry.title, output_fn);
                 fs::write(output_fn, rendered)?;
 
                 // this is one of the latest posts, add it to the rss list
                 if count == 0 {
-                    let entry_text = if let Some(trun_len) = &self.truncate {
+                    let entry_text = if let Some(trun_len) = &self.opts.truncate {
                         truncate_text(entry.raw_text.as_str(), *trun_len as usize)
                     } else {
                         entry.raw_text.as_str()
@@ -215,7 +183,7 @@ impl<'a> Builder<'a> {
                 .collect();
 
             let page_data = json!({
-                "title": &self.title,
+                "title": &self.opts.title,
                 "contents": entries,
                 "pagination": pagination,
                 "year": now.format("%Y").to_string(),
@@ -227,7 +195,7 @@ impl<'a> Builder<'a> {
                 _ => format!("index{}.html", count),
             };
 
-            let output_fn = self.dest_dir.join(index_fn.as_str());
+            let output_fn = dest.join(index_fn.as_str());
             let index_page = self.hbs.render("index", &page_data)?;
             println!("Writing page {} to {:?}", count, output_fn);
             fs::write(output_fn, index_page)?;
@@ -236,19 +204,19 @@ impl<'a> Builder<'a> {
 
         // generate rss with latest data
         let rss_data = json!({
-            "title": &self.title,
+            "title": &self.opts.title,
             "entries": rss_data,
             "year": now.format("%Y").to_string(),
             "pub_date": now.format("%a, %e %b, %Y %T %Z").to_string(),
         });
-        let rss_fn = self.dest_dir.join("index.rss");
+        let rss_fn = dest.join("index.rss");
         let rss_feed = self.hbs.render("rss", &rss_data)?;
         println!("Writing RSS feed to {:?}", rss_fn);
         fs::write(rss_fn, rss_feed)?;
 
         // generate tag list
         let tags_data = json!({ "tags": tag_map });
-        let tags_fn = self.dest_dir.join("tags.html");
+        let tags_fn = dest.join("tags.html");
         let tags_page = self.hbs.render("tag-list", &tags_data)?;
         println!("Writing tags to {:?}", tags_fn);
         fs::write(tags_fn, tags_page)?;
