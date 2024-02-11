@@ -8,6 +8,7 @@ use color_eyre::Result;
 use comrak::{markdown_to_html, ComrakOptions};
 use handlebars::Handlebars;
 use serde_json::{json, Value};
+use thiserror::Error;
 use truncate_string_at_whitespace::truncate_text;
 use voca_rs::strip::strip_tags;
 
@@ -15,14 +16,16 @@ use crate::helpers::{get_entries, parse_date};
 use crate::Opt;
 
 #[derive(Debug)]
-pub struct FileEntry {
-    pub modified: DateTime<FixedOffset>,
-    pub filename: String,
-    pub raw_text: String,
-    pub contents: String,
-    pub tags: Vec<String>,
-    pub title: String,
-    pub url: String,
+struct FileEntry {
+    modified: DateTime<FixedOffset>,
+    raw_text: String,
+    contents: String,
+    tags: Vec<String>,
+    title: String,
+    url: String,
+    hero_image: Option<String>,
+    share_image: Option<String>,
+    description: Option<String>,
 }
 
 #[derive(Debug)]
@@ -33,42 +36,51 @@ pub struct Builder<'blog> {
     hbs: Handlebars<'blog>,
 }
 
+#[derive(Debug, Error)]
+enum BuilderError {
+    #[error("{0:?} contains invalid unicode identifiers")]
+    BadFilename(Box<PathBuf>),
+
+    #[error("Missing required value {0}")]
+    MissingValue(String),
+
+    #[error("URL had no host")]
+    BadURL,
+}
+
 const HEADER_DELIMITER: &str = "---";
 const DATE_FORMAT: &str = "%A, %b %e, %Y";
 
 impl<'blog> Builder<'blog> {
     pub fn new(opts: Opt) -> Result<Builder<'blog>> {
-        match fs::DirBuilder::new().recursive(true).create(&opts.dest) {
-            Ok(d) => d,
-            Err(e) => return Err(e.into()),
-        }
+        let dest = &opts
+            .dest
+            .clone()
+            .ok_or(BuilderError::MissingValue("dest".to_string()))?;
+        fs::DirBuilder::new().recursive(true).create(dest)?;
 
-        let src = PathBuf::from(&opts.src);
-        let files = match get_entries(&src) {
-            Ok(f) => f,
-            Err(_e) => vec![],
-        };
+        let src = &opts
+            .src
+            .clone()
+            .ok_or(BuilderError::MissingValue("src".to_string()))?;
+        let src = PathBuf::from(src);
+        let files = get_entries(&src).unwrap_or_default();
 
         let mut hbs = Handlebars::new();
         let tmpl_src = PathBuf::from(&opts.template_dir);
-        let templates: Vec<PathBuf> = match get_entries(&tmpl_src) {
-            Ok(t) => t,
-            Err(_e) => vec![],
-        };
+        let templates = get_entries(&tmpl_src).unwrap_or_default();
 
         for tpl_path in templates.iter() {
-            let filename = tpl_path
-                .to_str()
-                .unwrap_or_else(|| panic!("Invalid unicode in filename: {:?}", tpl_path));
-
-            let name = match tpl_path.iter().last() {
-                Some(u) => match u.to_str() {
-                    Some(u) => u.split('.').next().unwrap(),
+            if let Some(filename) = tpl_path.to_str() {
+                let name = match tpl_path.iter().last() {
+                    Some(u) => match u.to_str() {
+                        Some(u) => u.split('.').next().unwrap(),
+                        None => filename,
+                    },
                     None => filename,
-                },
-                None => filename,
-            };
-            hbs.register_template_file(name, tpl_path)?;
+                };
+                hbs.register_template_file(name, tpl_path)?;
+            }
         }
 
         Ok(Builder {
@@ -81,14 +93,16 @@ impl<'blog> Builder<'blog> {
 
     pub fn build(&mut self) -> Result<()> {
         for file in self.files.iter() {
-            let entry = self.parse_entry(file).unwrap();
+            let entry = self.parse_entry(file)?;
             self.entries.push(entry);
         }
+
         self.entries.sort_by(|a, b| {
             let bd = b.modified.signed_duration_since(a.modified);
             let ad = a.modified.signed_duration_since(b.modified);
             bd.cmp(&ad)
         });
+
         self.build_blog()
     }
 
@@ -118,19 +132,44 @@ impl<'blog> Builder<'blog> {
             }
         }
 
+        // generate the pages
         let now = Local::now();
         let mut rss_data: Vec<_> = vec![];
         let mut tag_map: BTreeMap<String, Vec<Value>> = BTreeMap::new();
-        let dest = PathBuf::from(&self.opts.dest);
+
+        let dest = &self
+            .opts
+            .dest
+            .clone()
+            .ok_or(BuilderError::MissingValue("dest".to_string()))?;
+        let dest = PathBuf::from(dest);
+
+        let url = &self
+            .opts
+            .url
+            .clone()
+            .ok_or(BuilderError::MissingValue("url".to_string()))?;
+        let domain = url::Url::parse(url)?;
+        let domain = domain.host().ok_or(BuilderError::BadURL)?;
 
         for entry_set in self.entries.chunks(num_per_page.into()) {
+            // output individual page, and add to rss and tag dictionaries
             for entry in entry_set {
+                let entry_text = if let Some(trun_len) = &self.opts.truncate {
+                    truncate_text(&entry.raw_text, *trun_len as usize)
+                } else {
+                    entry.raw_text.as_str()
+                };
                 let post_data = json!({
                     "title": entry.title,
                     "contents": entry.contents,
                     "tags": entry.tags,
                     "url": entry.url,
                     "modified": entry.modified.format(DATE_FORMAT).to_string(),
+                    "hero_image": entry.hero_image,
+                    "share_image": entry.share_image,
+                    "description": entry.description.as_ref().unwrap_or(&truncate_text(&entry.raw_text, 300).to_string()),
+                    "site_url": self.opts.url,
                 });
                 let rendered = self.hbs.render("entry", &post_data)?;
                 let output_fn = dest.join(entry.url.as_str());
@@ -139,16 +178,17 @@ impl<'blog> Builder<'blog> {
 
                 // this is one of the latest posts, add it to the rss list
                 if count == 0 {
-                    let entry_text = if let Some(trun_len) = &self.opts.truncate {
-                        truncate_text(entry.raw_text.as_str(), *trun_len as usize)
-                    } else {
-                        entry.raw_text.as_str()
-                    };
                     rss_data.push(json!({
                         "title": entry.title,
                         "description": entry_text,
-                        "modified": entry.modified.format(DATE_FORMAT).to_string(),
+                        "modified": entry.modified.format("%+").to_string(),
                         "url": entry.url,
+                        "site_url": &self.opts.url,
+                        "contents": entry.contents,
+                        "time_stamp": now.format("%+").to_string(),
+                        "tag_date": now.format("%F").to_string(),
+                        "author": &self.opts.author.clone().unwrap_or("anonymous".to_string()),
+                        "domain": domain.to_string()
                     }));
                 }
 
@@ -162,7 +202,7 @@ impl<'blog> Builder<'blog> {
                     match tag_map.get_mut(tag) {
                         Some(tl) => tl.push(tag_entry),
                         None => {
-                            tag_map.insert(String::from(tag), vec![tag_entry]);
+                            tag_map.insert(tag.to_string(), vec![tag_entry]);
                         }
                     };
                 }
@@ -178,6 +218,8 @@ impl<'blog> Builder<'blog> {
                         "tags": entry.tags,
                         "url": entry.url,
                         "modified": entry.modified.format(DATE_FORMAT).to_string(),
+                        "hero_image": entry.hero_image,
+                        "site_url": &self.opts.url,
                     })
                 })
                 .collect();
@@ -188,11 +230,14 @@ impl<'blog> Builder<'blog> {
                 "pagination": pagination,
                 "year": now.format("%Y").to_string(),
                 "pub_date": now.format("%a, %e %b, %Y %T %Z").to_string(),
+                "description": &self.opts.description,
+                "site_url": self.opts.url,
             });
 
-            let index_fn = match count {
-                0 => String::from("index.html"),
-                _ => format!("index{}.html", count),
+            let index_fn = if count == 0 {
+                "index.html".to_string()
+            } else {
+                format!("index{}.html", count)
             };
 
             let output_fn = dest.join(index_fn.as_str());
@@ -208,9 +253,14 @@ impl<'blog> Builder<'blog> {
             "entries": rss_data,
             "year": now.format("%Y").to_string(),
             "pub_date": now.format("%a, %e %b, %Y %T %Z").to_string(),
+            "site_url": self.opts.url,
+            "description": &self.opts.description,
+            "time_stamp": now.format("%+").to_string(),
+            "tag_date": now.format("%F").to_string(),
+            "domain": domain.to_string(),
         });
         let rss_fn = dest.join("index.rss");
-        let rss_feed = self.hbs.render("rss", &rss_data)?;
+        let rss_feed = self.hbs.render("atom", &rss_data)?;
         println!("Writing RSS feed to {:?}", rss_fn);
         fs::write(rss_fn, rss_feed)?;
 
@@ -224,14 +274,20 @@ impl<'blog> Builder<'blog> {
         Ok(())
     }
 
-    fn parse_entry(&self, file: &Path) -> Result<FileEntry, std::io::Error> {
-        let filename = file.to_str().unwrap();
+    fn parse_entry(&self, file: &Path) -> Result<FileEntry> {
+        let filename = file
+            .to_str()
+            .ok_or(BuilderError::BadFilename(Box::new(file.to_owned())))?;
         let buf = fs::read_to_string(filename).unwrap();
 
         let mut pub_date = DateTime::<FixedOffset>::from(Local::now());
         let mut tag_list: Vec<String> = vec![];
         let mut title = String::new();
+        let mut share_image = None;
+        let mut hero_image = None;
+        let mut description = None;
 
+        // extract metadata from post
         let mut sep_count = 0;
         for line in buf.lines() {
             if line == HEADER_DELIMITER {
@@ -258,10 +314,20 @@ impl<'blog> Builder<'blog> {
                 Some(&"title:") => {
                     title = data_value;
                 }
+                Some(&"share_image:") => {
+                    share_image = Some(data_value);
+                }
+                Some(&"hero_image:") => {
+                    hero_image = Some(data_value);
+                }
+                Some(&"description:") => {
+                    description = Some(data_value);
+                }
                 _ => (),
             }
         }
 
+        // generate the filename
         let url = match file.iter().last() {
             Some(u) => match u.to_str() {
                 Some(u) => String::from(u).replace(".md", ".html"),
@@ -283,12 +349,14 @@ impl<'blog> Builder<'blog> {
 
         let entry = FileEntry {
             modified: pub_date,
-            filename: String::from(filename),
             tags: tag_list,
             raw_text,
             contents,
             title,
             url,
+            hero_image,
+            share_image,
+            description,
         };
 
         Ok(entry)

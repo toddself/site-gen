@@ -3,6 +3,7 @@ use std::fs;
 use clap::Parser;
 use color_eyre::Result;
 use serde::Deserialize;
+use thiserror::Error;
 
 mod builder;
 mod helpers;
@@ -24,18 +25,36 @@ struct Opt {
     template_dir: String,
 
     /// Source directory for markdown files
-    src: String,
+    src: Option<String>,
 
     /// Destination for HTML output
-    dest: String,
+    dest: Option<String>,
 
     /// Title for the site
     #[arg(short, long, default_value = "a blog")]
     title: String,
 
     /// How long should entries be in the RSS feed
-    #[arg(short = 'u', long)]
+    #[arg(long)]
     truncate: Option<u32>,
+
+    /// Description for the site
+    #[arg(long)]
+    description: Option<String>,
+
+    /// URL for the site
+    #[arg(short, long)]
+    url: Option<String>,
+
+    /// Author for site
+    #[arg(short, long)]
+    author: Option<String>,
+}
+
+#[derive(Debug, Error)]
+enum ProgramError {
+    #[error("You must provide src, dest and url in either the config or the command-line options")]
+    MissingOption,
 }
 
 fn main() -> Result<()> {
@@ -47,6 +66,10 @@ fn main() -> Result<()> {
     } else {
         opts
     };
+
+    if config_data.src.is_none() || config_data.dest.is_none() || config_data.url.is_none() {
+        return Err(ProgramError::MissingOption.into());
+    }
 
     let mut b = Builder::new(config_data)?;
 
