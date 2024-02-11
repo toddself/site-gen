@@ -1,7 +1,10 @@
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
+
 use chrono::{DateTime, FixedOffset, Local};
-use std::fs::read_dir;
-use std::io;
-use std::path::{Path, PathBuf};
+use color_eyre::Result;
 
 pub fn parse_date(date: &str) -> DateTime<FixedOffset> {
     match DateTime::parse_from_rfc3339(date) {
@@ -13,18 +16,12 @@ pub fn parse_date(date: &str) -> DateTime<FixedOffset> {
     }
 }
 
-pub fn get_entries(src: &Path) -> io::Result<Vec<PathBuf>> {
+pub fn get_entries(src: &Path) -> Result<Vec<PathBuf>> {
     let mut entries: Vec<_> = vec![];
-    if let Ok(res) = read_dir(src) {
-        for entry in res {
-            match entry {
-                Ok(e) => {
-                    if e.file_type()?.is_file() {
-                        entries.push(e.path());
-                    }
-                }
-                Err(_e) => (),
-            }
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        if entry.file_type()?.is_file() {
+            entries.push(entry.path());
         }
     }
     Ok(entries)
@@ -55,7 +52,7 @@ mod tests {
     }
 
     #[test]
-    fn reads_only_files() -> std::io::Result<()> {
+    fn reads_only_files() -> Result<()> {
         let mut fixtures = PathBuf::new();
         fixtures.push("fixtures/data");
         let entries = get_entries(&fixtures)?;
