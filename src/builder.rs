@@ -37,6 +37,24 @@ struct PageData {
     truncated_contents: String,
 }
 
+#[derive(Debug, Serialize)]
+struct PaginationData {
+    name: String,
+    url: String,
+}
+
+#[derive(Debug, Serialize)]
+struct IndexData {
+    title: String,
+    entries: Vec<PageData>,
+    publish_at: DateTime<FixedOffset>,
+    modified_at: DateTime<FixedOffset>,
+    site_url: Url,
+    site_description: String,
+    domain: String,
+    pagination: Vec<PaginationData>,
+}
+
 #[derive(Debug, Deserialize)]
 struct PageMetadata {
     date: DateTime<FixedOffset>,
