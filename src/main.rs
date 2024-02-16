@@ -105,12 +105,6 @@ struct Config {
     author: Option<String>,
 }
 
-#[derive(Debug, Error)]
-enum ProgramError {
-    #[error("You must provide src, dest and url in either the config or the command-line options")]
-    MissingOption,
-}
-
 fn main() -> Result<()> {
     let opts = CliArgs::parse();
 

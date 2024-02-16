@@ -17,7 +17,7 @@ use voca_rs::strip::strip_tags;
 use crate::helpers::{get_entries, parse_date};
 use crate::Config;
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 struct PageData {
     rendered_at: DateTime<FixedOffset>,
     created_at: DateTime<FixedOffset>,
@@ -37,7 +37,7 @@ struct PageData {
     truncated_contents: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 struct PaginationData {
     name: String,
     url: String,
@@ -47,8 +47,7 @@ struct PaginationData {
 struct IndexData {
     title: String,
     entries: Vec<PageData>,
-    publish_at: DateTime<FixedOffset>,
-    modified_at: DateTime<FixedOffset>,
+    published_at: DateTime<FixedOffset>,
     site_url: Url,
     site_description: String,
     domain: String,
@@ -153,14 +152,14 @@ impl<'blog> Builder<'blog> {
             }
             for index in 0..num_pages {
                 pagination.push(match index {
-                    0 => json!({
-                        "name": "home",
-                        "url": "index.html",
-                    }),
-                    _ => json!({
-                        "name": format!("page {}", index),
-                        "url": format!("index{}.html", index),
-                    }),
+                    0 => PaginationData {
+                        name: "home".to_string(),
+                        url: "index.html".to_string(),
+                    },
+                    _ => PaginationData {
+                        name: format!("page {}", index),
+                        url: format!("index{}.html", index),
+                    },
                 });
             }
         }
@@ -182,7 +181,7 @@ impl<'blog> Builder<'blog> {
                 fs::write(output_fn, rendered)?;
                 // this is one of the latest posts, add it to the rss list
                 if count == 0 {
-                    rss_data.push(json!(entry));
+                    rss_data.push(entry);
                 }
 
                 // collect the tags for this post and associate them to the entry
@@ -201,48 +200,37 @@ impl<'blog> Builder<'blog> {
                 }
             }
 
-            // get whole chunk of posts to generate the paginated indexes
-            let entries: Vec<_> = entry_set.iter().map(|entry| json!(entry)).collect();
-
-            let page_data = json!({
-                "title": &self.opts.title,
-                "contents": entries,
-                "pagination": pagination,
-                "year": now.format("%Y").to_string(),
-                "pub_date": now.format("%a, %e %b, %Y %T %Z").to_string(),
-                "description": &self.opts.description,
-                "site_url": self.opts.url,
-            });
+            let index_data = IndexData {
+                title: self.opts.title.clone(),
+                entries: entry_set.to_vec(),
+                pagination: pagination.clone(),
+                published_at: now.into(),
+                site_description: self
+                    .opts
+                    .description
+                    .as_ref()
+                    .unwrap_or(&"".to_string())
+                    .to_string(),
+                site_url: self.opts.url.clone(),
+                domain: self.domain.to_string(),
+            };
 
             let index_fn = if count == 0 {
+                let rss_fn = dest.join("index.rss");
+                let rss_feed = self.hbs.render("atom", &index_data)?;
+                println!("Writing RSS feed to {:?}", rss_fn);
+                fs::write(rss_fn, rss_feed)?;
                 "index.html".to_string()
             } else {
                 format!("index{}.html", count)
             };
 
             let output_fn = dest.join(index_fn.as_str());
-            let index_page = self.hbs.render("index", &page_data)?;
+            let index_page = self.hbs.render("index", &index_data)?;
             println!("Writing page {} to {:?}", count, output_fn);
             fs::write(output_fn, index_page)?;
             count += 1;
         }
-
-        // generate rss with latest data
-        let rss_data = json!({
-            "title": &self.opts.title,
-            "entries": rss_data,
-            "year": now.format("%Y").to_string(),
-            "pub_date": now.format("%a, %e %b, %Y %T %Z").to_string(),
-            "site_url": self.opts.url,
-            "description": &self.opts.description,
-            "time_stamp": now.format("%+").to_string(),
-            "tag_date": now.format("%F").to_string(),
-            "domain": self.domain.to_string(),
-        });
-        let rss_fn = dest.join("index.rss");
-        let rss_feed = self.hbs.render("atom", &rss_data)?;
-        println!("Writing RSS feed to {:?}", rss_fn);
-        fs::write(rss_fn, rss_feed)?;
 
         // generate tag list
         let tags_data = json!({ "tags": tag_map });
