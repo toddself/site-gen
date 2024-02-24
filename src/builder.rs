@@ -8,7 +8,7 @@ use color_eyre::Result;
 use comrak::{markdown_to_html, ComrakOptions};
 use handlebars::{handlebars_helper, Handlebars};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::json;
 use thiserror::Error;
 use truncate_string_at_whitespace::truncate_text;
 use url::Url;
@@ -52,6 +52,14 @@ struct IndexData {
     site_description: String,
     domain: String,
     pagination: Vec<PaginationData>,
+    share_image: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct TagData {
+    url: String,
+    title: String,
+    tag: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -167,7 +175,7 @@ impl<'blog> Builder<'blog> {
         // generate the pages
         let now = Local::now();
         let mut rss_data: Vec<_> = vec![];
-        let mut tag_map: BTreeMap<String, Vec<Value>> = BTreeMap::new();
+        let mut tag_map: BTreeMap<String, Vec<TagData>> = BTreeMap::new();
         let dest = PathBuf::from(&self.opts.dest);
 
         for entry_set in self.entries.chunks(num_per_page.into()) {
@@ -186,11 +194,11 @@ impl<'blog> Builder<'blog> {
 
                 // collect the tags for this post and associate them to the entry
                 for tag in entry.tags.iter() {
-                    let tag_entry = json!({
-                        "url": entry.url,
-                        "title": entry.title,
-                        "tag": tag,
-                    });
+                    let tag_entry = TagData {
+                        url: entry.url.clone(),
+                        title: entry.title.clone(),
+                        tag: tag.to_string(),
+                    };
                     match tag_map.get_mut(tag) {
                         Some(tl) => tl.push(tag_entry),
                         None => {
@@ -213,6 +221,7 @@ impl<'blog> Builder<'blog> {
                     .to_string(),
                 site_url: self.opts.url.clone(),
                 domain: self.domain.to_string(),
+                share_image: self.opts.share_image.clone(),
             };
 
             let index_fn = if count == 0 {

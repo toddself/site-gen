@@ -3,47 +3,56 @@
   <head>
     <meta http-equiv="content-type" content="text/html; charset=utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="og:title" content="{{title}}">
-    <meta name="og:description" content="{{description}}">
+
+    <meta property="og:title" content="{{title}}">
+    <meta property="og:description" content="{{description}}">
     {{#if share_image}}
-      <meta name="og:image" content="{{site_url}}{{share_image}}">
+      <meta property="og:image" content="{{site_url}}{{share_image}}">
+      <meta name="twitter:image" content="{{site_ur}}{{share_image}}">
     {{/if}}
-    <meta name="og:url" content="{{site_url}}{{url}}">
+    <meta property="og:url" content="{{site_url}}">
+    <meta property="twitter:url" content="{{site_url}}">
     <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="{{title}}">
+    <meta name="twitter:description" content="{{description}}">
+
     <title>{{title}}</title>
-    <link rel="alternate" type="application/rss+xml" title="{{title}}" href="{{site_url}}/index.rss">
-    <style>{{>style}}</style>
+    <link rel="alternate" type="application/atom+xml" title="{{title}}" href="{{site_url}}/index.xml">
   </head>
   <body>
-    <header><h1><a href="{{site_url}}" class="title">{{title}}</a></h1></header>
-    <main class="content">
+    <header><h1><a href="{{site_url}}">{{title}}</a></h1></header>
+    <main>
+
     {{#each contents}}
-<article class="post">
-  <div>
-    {{#if this.hero_image}}
-      <img src="{{this.hero_image}}">
-    {{/if}}
-    <h2><a href="{{this.url}}">{{{this.title}}}</a></h2>
-    {{{this.contents}}}
-  </div>
-  <time>{{this.modified}}</time>
-  Tags: <ul class="tags">
-  {{#each this.tags}}
-    <li class="tags"><a href="tags.html#{{this}}">{{this}}</a></li>
-  {{/each}}
-  </ul>
-</article>
+    <article>
+      <div>
+        {{#if this.hero_image}}
+          <img src="{{this.hero_image}}">
+        {{/if}}
+        <h2><a href="{{this.url}}">{{{this.title}}}</a></h2>
+        {{{this.contents}}}
+      </div>
+      <time>{{date this.modified "%B %e, %Y"}}</time>
+      Tags: <ul>
+      {{#each this.tags}}
+        <li><a href="tags.html#{{this}}">{{this}}</a></li>
+      {{/each}}
+      </ul>
+    </article>
     {{/each}}
+
     </main>
+
     {{#if pagination}}
-    <nav class="content">Other posts:
-      <ol class="tags">
+    <nav>Other posts:
+      <ol>
       {{#each pagination}}
-        <li class="tags"><a href="{{this.url}}">{{this.name}}</a></li>
+        <li><a href="{{this.url}}">{{this.name}}</a></li>
       {{/each}}
       </ol>
     </nav>
     {{/if}}
-    <footer class="content">Last updated: {{pub_date}}</footer>
+
+    <footer>Last updated: {{pub_date}}</footer>
   </body>
 </html>

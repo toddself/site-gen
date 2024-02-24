@@ -50,6 +50,10 @@ struct CliArgs {
     /// Author for site
     #[arg(short, long)]
     author: Option<String>,
+
+    /// Social share image for site
+    #[arg(long)]
+    share_image: Option<String>,
 }
 
 #[derive(Debug, Error)]
@@ -78,6 +82,7 @@ impl TryInto<Config> for CliArgs {
         let description = self.description;
         let url = self.url.ok_or(ParserError::MissingArg("url".to_string()))?;
         let author = self.author;
+        let share_image = self.share_image;
         Ok(Config {
             entries,
             template_dir,
@@ -88,6 +93,7 @@ impl TryInto<Config> for CliArgs {
             description,
             url,
             author,
+            share_image,
         })
     }
 }
@@ -103,6 +109,7 @@ struct Config {
     truncate: Option<u32>,
     description: Option<String>,
     author: Option<String>,
+    share_image: Option<String>,
 }
 
 fn main() -> Result<()> {
