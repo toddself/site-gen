@@ -6,18 +6,21 @@ use std::str;
 use chrono::{DateTime, FixedOffset, Local};
 use color_eyre::Result;
 use comrak::{markdown_to_html, ComrakOptions};
-use handlebars::Handlebars;
-use serde_json::{json, Value};
+use handlebars::{handlebars_helper, Handlebars};
+use serde::{Deserialize, Serialize};
+use serde_json::json;
 use thiserror::Error;
 use truncate_string_at_whitespace::truncate_text;
+use url::Url;
 use voca_rs::strip::strip_tags;
 
 use crate::helpers::{get_entries, parse_date};
-use crate::Opt;
+use crate::Config;
 
-#[derive(Debug)]
-struct FileEntry {
-    modified: DateTime<FixedOffset>,
+#[derive(Debug, Serialize, Clone)]
+struct PageData {
+    rendered_at: DateTime<FixedOffset>,
+    created_at: DateTime<FixedOffset>,
     raw_text: String,
     contents: String,
     tags: Vec<String>,
@@ -26,14 +29,57 @@ struct FileEntry {
     hero_image: Option<String>,
     share_image: Option<String>,
     description: Option<String>,
+    site_url: Url,
+    domain: String,
+    author: Option<String>,
+    year: String,
+    site_description: Option<String>,
+    truncated_contents: String,
+}
+
+#[derive(Debug, Serialize, Clone)]
+struct PaginationData {
+    name: String,
+    url: String,
+}
+
+#[derive(Debug, Serialize)]
+struct IndexData {
+    title: String,
+    entries: Vec<PageData>,
+    published_at: DateTime<FixedOffset>,
+    site_url: Url,
+    site_description: String,
+    domain: String,
+    pagination: Vec<PaginationData>,
+    share_image: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct TagData {
+    url: String,
+    title: String,
+    tag: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct PageMetadata {
+    date: DateTime<FixedOffset>,
+    tag_list: Vec<String>,
+    title: String,
+    share_image: Option<String>,
+    hero_image: Option<String>,
+    author: Option<String>,
+    description: Option<String>,
 }
 
 #[derive(Debug)]
 pub struct Builder<'blog> {
-    opts: Opt,
+    opts: Config,
     files: Vec<PathBuf>,
-    entries: Vec<FileEntry>,
+    entries: Vec<PageData>,
     hbs: Handlebars<'blog>,
+    domain: String,
 }
 
 #[derive(Debug, Error)]
@@ -41,29 +87,18 @@ enum BuilderError {
     #[error("{0:?} contains invalid unicode identifiers")]
     BadFilename(Box<PathBuf>),
 
-    #[error("Missing required value {0}")]
-    MissingValue(String),
-
     #[error("URL had no host")]
     BadURL,
 }
 
 const HEADER_DELIMITER: &str = "---";
-const DATE_FORMAT: &str = "%A, %b %e, %Y";
+const DEFAULT_TRUNCATED: u32 = 300;
 
 impl<'blog> Builder<'blog> {
-    pub fn new(opts: Opt) -> Result<Builder<'blog>> {
-        let dest = &opts
-            .dest
-            .clone()
-            .ok_or(BuilderError::MissingValue("dest".to_string()))?;
-        fs::DirBuilder::new().recursive(true).create(dest)?;
+    pub fn new(opts: Config) -> Result<Builder<'blog>> {
+        fs::DirBuilder::new().recursive(true).create(&opts.dest)?;
 
-        let src = &opts
-            .src
-            .clone()
-            .ok_or(BuilderError::MissingValue("src".to_string()))?;
-        let src = PathBuf::from(src);
+        let src = PathBuf::from(&opts.src);
         let files = get_entries(&src).unwrap_or_default();
 
         let mut hbs = Handlebars::new();
@@ -82,12 +117,17 @@ impl<'blog> Builder<'blog> {
                 hbs.register_template_file(name, tpl_path)?;
             }
         }
+        handlebars_helper!(date: |v: String, f: String| parse_date(&v).format(&f).to_string());
+        hbs.register_helper("date", Box::new(date));
+        let domain = opts.url.clone();
+        let domain = domain.host().ok_or(BuilderError::BadURL)?;
 
         Ok(Builder {
             opts,
             files,
             entries: vec![],
             hbs,
+            domain: domain.to_string(),
         })
     }
 
@@ -98,8 +138,8 @@ impl<'blog> Builder<'blog> {
         }
 
         self.entries.sort_by(|a, b| {
-            let bd = b.modified.signed_duration_since(a.modified);
-            let ad = a.modified.signed_duration_since(b.modified);
+            let bd = b.created_at.signed_duration_since(a.created_at);
+            let ad = a.created_at.signed_duration_since(b.created_at);
             bd.cmp(&ad)
         });
 
@@ -120,14 +160,14 @@ impl<'blog> Builder<'blog> {
             }
             for index in 0..num_pages {
                 pagination.push(match index {
-                    0 => json!({
-                        "name": "home",
-                        "url": "index.html",
-                    }),
-                    _ => json!({
-                        "name": format!("page {}", index),
-                        "url": format!("index{}.html", index),
-                    }),
+                    0 => PaginationData {
+                        name: "home".to_string(),
+                        url: "index.html".to_string(),
+                    },
+                    _ => PaginationData {
+                        name: format!("page {}", index),
+                        url: format!("index{}.html", index),
+                    },
                 });
             }
         }
@@ -135,70 +175,30 @@ impl<'blog> Builder<'blog> {
         // generate the pages
         let now = Local::now();
         let mut rss_data: Vec<_> = vec![];
-        let mut tag_map: BTreeMap<String, Vec<Value>> = BTreeMap::new();
-
-        let dest = &self
-            .opts
-            .dest
-            .clone()
-            .ok_or(BuilderError::MissingValue("dest".to_string()))?;
-        let dest = PathBuf::from(dest);
-
-        let url = &self
-            .opts
-            .url
-            .clone()
-            .ok_or(BuilderError::MissingValue("url".to_string()))?;
-        let domain = url::Url::parse(url)?;
-        let domain = domain.host().ok_or(BuilderError::BadURL)?;
+        let mut tag_map: BTreeMap<String, Vec<TagData>> = BTreeMap::new();
+        let dest = PathBuf::from(&self.opts.dest);
 
         for entry_set in self.entries.chunks(num_per_page.into()) {
             // output individual page, and add to rss and tag dictionaries
             for entry in entry_set {
-                let entry_text = if let Some(trun_len) = &self.opts.truncate {
-                    truncate_text(&entry.raw_text, *trun_len as usize)
-                } else {
-                    entry.raw_text.as_str()
-                };
-                let post_data = json!({
-                    "title": entry.title,
-                    "contents": entry.contents,
-                    "tags": entry.tags,
-                    "url": entry.url,
-                    "modified": entry.modified.format(DATE_FORMAT).to_string(),
-                    "hero_image": entry.hero_image,
-                    "share_image": entry.share_image,
-                    "description": entry.description.as_ref().unwrap_or(&truncate_text(&entry.raw_text, 300).to_string()),
-                    "site_url": self.opts.url,
-                });
+                let post_data = json!(entry);
                 let rendered = self.hbs.render("entry", &post_data)?;
                 let output_fn = dest.join(entry.url.as_str());
                 println!("Writing {} to {:?}", entry.title, output_fn);
-                fs::write(output_fn, rendered)?;
 
+                fs::write(output_fn, rendered)?;
                 // this is one of the latest posts, add it to the rss list
                 if count == 0 {
-                    rss_data.push(json!({
-                        "title": entry.title,
-                        "description": entry_text,
-                        "modified": entry.modified.format("%+").to_string(),
-                        "url": entry.url,
-                        "site_url": &self.opts.url,
-                        "contents": entry.contents,
-                        "time_stamp": now.format("%+").to_string(),
-                        "tag_date": now.format("%F").to_string(),
-                        "author": &self.opts.author.clone().unwrap_or("anonymous".to_string()),
-                        "domain": domain.to_string()
-                    }));
+                    rss_data.push(entry);
                 }
 
                 // collect the tags for this post and associate them to the entry
                 for tag in entry.tags.iter() {
-                    let tag_entry = json!({
-                        "url": entry.url,
-                        "title": entry.title,
-                        "tag": tag,
-                    });
+                    let tag_entry = TagData {
+                        url: entry.url.clone(),
+                        title: entry.title.clone(),
+                        tag: tag.to_string(),
+                    };
                     match tag_map.get_mut(tag) {
                         Some(tl) => tl.push(tag_entry),
                         None => {
@@ -208,61 +208,38 @@ impl<'blog> Builder<'blog> {
                 }
             }
 
-            // get whole chunk of posts to generate the paginated indexes
-            let entries: Vec<_> = entry_set
-                .iter()
-                .map(|entry| {
-                    json!({
-                        "title": entry.title,
-                        "contents": entry.contents,
-                        "tags": entry.tags,
-                        "url": entry.url,
-                        "modified": entry.modified.format(DATE_FORMAT).to_string(),
-                        "hero_image": entry.hero_image,
-                        "site_url": &self.opts.url,
-                    })
-                })
-                .collect();
-
-            let page_data = json!({
-                "title": &self.opts.title,
-                "contents": entries,
-                "pagination": pagination,
-                "year": now.format("%Y").to_string(),
-                "pub_date": now.format("%a, %e %b, %Y %T %Z").to_string(),
-                "description": &self.opts.description,
-                "site_url": self.opts.url,
-            });
+            let index_data = IndexData {
+                title: self.opts.title.clone(),
+                entries: entry_set.to_vec(),
+                pagination: pagination.clone(),
+                published_at: now.into(),
+                site_description: self
+                    .opts
+                    .description
+                    .as_ref()
+                    .unwrap_or(&"".to_string())
+                    .to_string(),
+                site_url: self.opts.url.clone(),
+                domain: self.domain.to_string(),
+                share_image: self.opts.share_image.clone(),
+            };
 
             let index_fn = if count == 0 {
+                let rss_fn = dest.join("index.rss");
+                let rss_feed = self.hbs.render("atom", &index_data)?;
+                println!("Writing RSS feed to {:?}", rss_fn);
+                fs::write(rss_fn, rss_feed)?;
                 "index.html".to_string()
             } else {
                 format!("index{}.html", count)
             };
 
             let output_fn = dest.join(index_fn.as_str());
-            let index_page = self.hbs.render("index", &page_data)?;
+            let index_page = self.hbs.render("index", &index_data)?;
             println!("Writing page {} to {:?}", count, output_fn);
             fs::write(output_fn, index_page)?;
             count += 1;
         }
-
-        // generate rss with latest data
-        let rss_data = json!({
-            "title": &self.opts.title,
-            "entries": rss_data,
-            "year": now.format("%Y").to_string(),
-            "pub_date": now.format("%a, %e %b, %Y %T %Z").to_string(),
-            "site_url": self.opts.url,
-            "description": &self.opts.description,
-            "time_stamp": now.format("%+").to_string(),
-            "tag_date": now.format("%F").to_string(),
-            "domain": domain.to_string(),
-        });
-        let rss_fn = dest.join("index.rss");
-        let rss_feed = self.hbs.render("atom", &rss_data)?;
-        println!("Writing RSS feed to {:?}", rss_fn);
-        fs::write(rss_fn, rss_feed)?;
 
         // generate tag list
         let tags_data = json!({ "tags": tag_map });
@@ -274,21 +251,12 @@ impl<'blog> Builder<'blog> {
         Ok(())
     }
 
-    fn parse_entry(&self, file: &Path) -> Result<FileEntry> {
-        let filename = file
-            .to_str()
-            .ok_or(BuilderError::BadFilename(Box::new(file.to_owned())))?;
-        let buf = fs::read_to_string(filename).unwrap();
-
-        let mut pub_date = DateTime::<FixedOffset>::from(Local::now());
-        let mut tag_list: Vec<String> = vec![];
-        let mut title = String::new();
-        let mut share_image = None;
-        let mut hero_image = None;
-        let mut description = None;
+    fn parse_entry(&self, file: &Path) -> Result<PageData> {
+        let buf = fs::read_to_string(file)?;
 
         // extract metadata from post
         let mut sep_count = 0;
+        let mut page_metadata = String::new();
         for line in buf.lines() {
             if line == HEADER_DELIMITER {
                 sep_count += 1;
@@ -296,69 +264,54 @@ impl<'blog> Builder<'blog> {
                     break;
                 }
             }
-
-            let elements: Vec<&str> = line.split(' ').collect();
-            let data_type = elements.first();
-            let data_value = elements[1..].join(" ");
-
-            match data_type {
-                Some(&"date:") => {
-                    pub_date = parse_date(data_value.as_str());
-                }
-                Some(&"tags:") => {
-                    tag_list = data_value
-                        .split(',')
-                        .map(|e| String::from(e.trim()))
-                        .collect()
-                }
-                Some(&"title:") => {
-                    title = data_value;
-                }
-                Some(&"share_image:") => {
-                    share_image = Some(data_value);
-                }
-                Some(&"hero_image:") => {
-                    hero_image = Some(data_value);
-                }
-                Some(&"description:") => {
-                    description = Some(data_value);
-                }
-                _ => (),
-            }
+            page_metadata.push_str(line);
+            page_metadata.push('\n');
         }
+        let page_metadata: PageMetadata = toml::from_str(&page_metadata)?;
 
         // generate the filename
-        let url = match file.iter().last() {
-            Some(u) => match u.to_str() {
-                Some(u) => String::from(u).replace(".md", ".html"),
-                None => String::from(filename),
-            },
-            None => String::from(filename),
-        };
+        let page_filename = file.with_extension("").with_extension(".html");
+        let page_filename = page_filename
+            .to_str()
+            .ok_or(BuilderError::BadFilename(Box::new(file.to_path_buf())))?;
 
+        // render to html
         let mut comrak_options = ComrakOptions::default();
         comrak_options.render.unsafe_ = true;
         comrak_options.parse.smart = true;
-        comrak_options.extension.front_matter_delimiter = Some(HEADER_DELIMITER.to_owned());
+        comrak_options.extension.front_matter_delimiter = Some(HEADER_DELIMITER.to_string());
         comrak_options.extension.strikethrough = true;
         comrak_options.extension.tagfilter = false;
-        let contents = markdown_to_html(buf.as_str(), &comrak_options);
-        let raw_text = strip_tags(contents.as_str());
 
-        println!("Parsed {:?} as {}", file, title);
-
-        let entry = FileEntry {
-            modified: pub_date,
-            tags: tag_list,
-            raw_text,
-            contents,
-            title,
-            url,
-            hero_image,
-            share_image,
-            description,
+        let contents = markdown_to_html(&buf, &comrak_options);
+        let raw_text = strip_tags(&contents);
+        let author = match page_metadata.author {
+            Some(author) => Some(author),
+            None => self.opts.author.clone(),
         };
+        let now = Local::now();
 
+        let truncate_len = self.opts.truncate.unwrap_or(DEFAULT_TRUNCATED);
+        let truncated_text = truncate_text(&raw_text, truncate_len.try_into()?);
+        println!("Parsed {:?} as {}", file, page_metadata.title);
+        let entry = PageData {
+            rendered_at: now.into(),
+            created_at: page_metadata.date,
+            raw_text: raw_text.clone(),
+            contents,
+            tags: page_metadata.tag_list,
+            title: page_metadata.title,
+            url: page_filename.to_string(),
+            hero_image: page_metadata.hero_image,
+            share_image: page_metadata.share_image,
+            description: page_metadata.description,
+            site_url: self.opts.url.clone(),
+            domain: self.domain.clone(),
+            author,
+            year: now.format("%Y").to_string(),
+            site_description: self.opts.description.clone(),
+            truncated_contents: truncated_text.to_string(),
+        };
         Ok(entry)
     }
 }

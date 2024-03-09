@@ -1,4 +1,4 @@
-# blog-builder
+# site-gen
 
 I need a catchier title
 

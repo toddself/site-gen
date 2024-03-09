@@ -1,11 +1,11 @@
 [package]
-name = "blog-builder"
+name = "site-gen"
 version = "2.0.0"
 authors = ["Todd Kennedy <todd@selfassembled.org>"]
 edition = "2021"
 
 [dependencies]
-chrono = "0.4"
+chrono = { version = "0.4", features = ["serde"] }
 comrak = "0.21.0"
 voca_rs = "1.15.2"
 handlebars = "5.1.0"
@@ -16,4 +16,6 @@ color-eyre = "0.6.2"
 serde = { version = "1.0.196", features = ["derive"] }
 toml = "0.8.10"
 thiserror = "1.0.56"
-url = "2.5.0"
+url = { version = "2.5.0", features = ["serde"] }
+env_logger = "0.11.3"
+log = "0.4.21"
