@@ -1,4 +1,4 @@
-use std::fs;
+use std::{fs, path::PathBuf};
 
 use clap::Parser;
 use color_eyre::Result;
@@ -8,7 +8,11 @@ use url::Url;
 
 mod builder;
 mod helpers;
+mod logger;
 use crate::builder::Builder;
+use logger::log_format_pretty;
+
+const CONFIG_DEFAULT: &str = ".site-gen.toml";
 
 #[derive(Debug, Parser)]
 #[command(version, about)]
@@ -23,14 +27,21 @@ enum Action {
         #[command(subcommand)]
         action: BuildCommand,
     },
-    // Validate {
-    //     #[command(subcommand)]
-    //     action: Validate
-    // }
+    Create {
+        #[command(subcommand)]
+        action: CreateCommand,
+    }
 }
 
 #[derive(Debug, Clone, clap::Subcommand)]
-#[command(version, about, long_about = None)]
+enum CreateCommand {
+    Create {
+        #[arg(short, long)]
+        config: Option<String>
+    }
+}
+
+#[derive(Debug, Clone, clap::Subcommand)]
 enum BuildCommand {
     Build {
         /// Path to config file
@@ -130,8 +141,17 @@ fn parse_args(
     })
 }
 
+fn find_config(p: PathBuf) -> Result<PathBuf> {
+}
+
 fn main() -> Result<()> {
+    env_logger::builder()
+        .format(log_format_pretty)
+        .try_init()
+        .into_diagnostic()?;
+
     let args = Args::parse();
+    log::debug!("Running: {:?}", args.action);
     match args.action {
         Action::Build {
             action:
@@ -149,6 +169,7 @@ fn main() -> Result<()> {
                     share_image,
                 },
         } => {
+            let maybe_config = find_config(std::env::current_dir())?;
             let config_data: Config = match config {
                 Some(config) => {
                     let data = fs::read_to_string(config)?;
@@ -194,10 +215,13 @@ fn main() -> Result<()> {
             let mut b = Builder::new(config_data)?;
 
             match b.build() {
-                Ok(_a) => println!("Blog built!"),
-                Err(e) => println!("{:?}", e),
+                Ok(_) => log::info!("Blog built!"),
+                Err(e) => log::error!("{:?}", e),
             };
             Ok(())
-        }
+        },
+        Action::Create { action: CreateCommand::Create { config }, } => {
+            Ok(())
+        },
     }
 }
