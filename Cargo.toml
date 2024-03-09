@@ -3,6 +3,11 @@ name = "site-gen"
 version = "2.0.0"
 authors = ["Todd Kennedy <todd@selfassembled.org>"]
 edition = "2021"
+license = "Apache-2.0"
+license-file ="LICENSE"
+description = "A static site generator using Handlebars templates"
+readme = "README.md"
+repository = "https://github.com/toddself/site-gen"
 
 [dependencies]
 chrono = "0.4"
