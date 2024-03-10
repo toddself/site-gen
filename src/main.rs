@@ -20,36 +20,12 @@ const CONFIG_DEFAULT: &str = ".site-gen.toml";
 #[command(version, about)]
 struct Args {
     #[command(subcommand)]
-    action: Action,
+    arg: Action,
 }
 
 #[derive(Debug, Parser)]
 #[allow(variant_size_differences, clippy::large_enum_variant)]
 enum Action {
-    Build {
-        #[command(subcommand)]
-        action: BuildCommand,
-    },
-    Create {
-        #[command(subcommand)]
-        action: CreateCommand,
-    },
-}
-
-#[derive(Debug, Clone, clap::Subcommand)]
-#[allow(variant_size_differences)]
-enum CreateCommand {
-    Create {
-        #[arg(short, long)]
-        config: Option<String>,
-
-        title: Option<String>,
-    },
-}
-
-#[derive(Debug, Clone, clap::Subcommand)]
-#[allow(variant_size_differences)]
-enum BuildCommand {
     Build {
         /// Path to config file
         #[arg(short, long)]
@@ -92,6 +68,12 @@ enum BuildCommand {
         /// Social share image for site
         #[arg(long)]
         share_image: Option<String>,
+    },
+    Create {
+        #[arg(short, long)]
+        config: Option<String>,
+
+        title: Option<String>,
     },
 }
 
@@ -167,23 +149,20 @@ fn main() -> Result<()> {
     env_logger::builder().format(log_format_pretty).try_init()?;
 
     let args = Args::parse();
-    log::debug!("Running: {:?}", args.action);
-    match args.action {
+    log::debug!("Running: {:?}", args.arg);
+    match args.arg {
         Action::Build {
-            action:
-                BuildCommand::Build {
-                    src,
-                    dest,
-                    config,
-                    entries,
-                    template_dir,
-                    title,
-                    truncate,
-                    description,
-                    url,
-                    author,
-                    share_image,
-                },
+            src,
+            dest,
+            config,
+            entries,
+            template_dir,
+            title,
+            truncate,
+            description,
+            url,
+            author,
+            share_image,
         } => {
             let cf = find_config(std::env::current_dir()?, &config);
             let config_data: Config = match cf {
@@ -236,9 +215,7 @@ fn main() -> Result<()> {
             };
             Ok(())
         }
-        Action::Create {
-            action: CreateCommand::Create { config, title },
-        } => {
+        Action::Create { config, title } => {
             let config = find_config(std::env::current_dir()?, &config).ok_or(
                 CliError::MissingConfig(config.unwrap_or(CONFIG_DEFAULT.to_string())),
             )?;
@@ -246,7 +223,7 @@ fn main() -> Result<()> {
 
             let pm = PageMetadata {
                 date: Local::now().into(),
-                tag_list: [].to_vec(),
+                tag_list: None,
                 title: "Page Title".to_string(),
                 share_image: None,
                 hero_image: None,
@@ -254,8 +231,9 @@ fn main() -> Result<()> {
                 description: None,
             };
             let meta = toml::to_string(&pm)?;
-            let page_data = format!("{HEADER_DELIMITER}\n{meta}\n{HEADER_DELIMITER}\n");
-            let new_file = PathBuf::from(data.src).join(title.unwrap_or("untitled.md".to_string()));
+            let page_data = format!("{HEADER_DELIMITER}\n{meta}{HEADER_DELIMITER}\n");
+            let entry_name = format!("{}.md", title.unwrap_or("untitled".to_string()));
+            let new_file = PathBuf::from(data.src).join(entry_name);
             fs::write(new_file, page_data)?;
             Ok(())
         }

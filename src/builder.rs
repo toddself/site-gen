@@ -23,7 +23,7 @@ struct PageData {
     created_at: DateTime<FixedOffset>,
     raw_text: String,
     contents: String,
-    tags: Vec<String>,
+    tags: Option<Vec<String>>,
     title: String,
     url: String,
     hero_image: Option<String>,
@@ -65,7 +65,7 @@ struct TagData {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PageMetadata {
     pub date: DateTime<FixedOffset>,
-    pub tag_list: Vec<String>,
+    pub tag_list: Option<Vec<String>>,
     pub title: String,
     pub share_image: Option<String>,
     pub hero_image: Option<String>,
@@ -192,19 +192,21 @@ impl<'blog> Builder<'blog> {
                     rss_data.push(entry);
                 }
 
-                // collect the tags for this post and associate them to the entry
-                for tag in entry.tags.iter() {
-                    let tag_entry = TagData {
-                        url: entry.url.clone(),
-                        title: entry.title.clone(),
-                        tag: tag.to_string(),
-                    };
-                    match tag_map.get_mut(tag) {
-                        Some(tl) => tl.push(tag_entry),
-                        None => {
-                            tag_map.insert(tag.to_string(), vec![tag_entry]);
-                        }
-                    };
+                if let Some(tags) = &entry.tags {
+                    // collect the tags for this post and associate them to the entry
+                    for tag in tags.iter() {
+                        let tag_entry = TagData {
+                            url: entry.url.clone(),
+                            title: entry.title.clone(),
+                            tag: tag.to_string(),
+                        };
+                        match tag_map.get_mut(tag) {
+                            Some(tl) => tl.push(tag_entry),
+                            None => {
+                                tag_map.insert(tag.to_string(), vec![tag_entry]);
+                            }
+                        };
+                    }
                 }
             }
 
