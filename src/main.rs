@@ -1,5 +1,6 @@
 use std::{fs, path::PathBuf};
 
+use chrono::Local;
 use clap::Parser;
 use color_eyre::Result;
 use serde::Deserialize;
@@ -9,7 +10,8 @@ use url::Url;
 mod builder;
 mod helpers;
 mod logger;
-use crate::builder::Builder;
+
+use builder::{Builder, PageMetadata, HEADER_DELIMITER};
 use logger::log_format_pretty;
 
 const CONFIG_DEFAULT: &str = ".site-gen.toml";
@@ -22,6 +24,7 @@ struct Args {
 }
 
 #[derive(Debug, Parser)]
+#[allow(variant_size_differences, clippy::large_enum_variant)]
 enum Action {
     Build {
         #[command(subcommand)]
@@ -30,18 +33,22 @@ enum Action {
     Create {
         #[command(subcommand)]
         action: CreateCommand,
-    }
+    },
 }
 
 #[derive(Debug, Clone, clap::Subcommand)]
+#[allow(variant_size_differences)]
 enum CreateCommand {
     Create {
         #[arg(short, long)]
-        config: Option<String>
-    }
+        config: Option<String>,
+
+        title: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, clap::Subcommand)]
+#[allow(variant_size_differences)]
 enum BuildCommand {
     Build {
         /// Path to config file
@@ -89,9 +96,12 @@ enum BuildCommand {
 }
 
 #[derive(Debug, Error)]
-enum ParserError {
+enum CliError {
     #[error("You must provide {0} either in a config or via the CLI arguments")]
     MissingArg(String),
+
+    #[error("No config file was found ({0})")]
+    MissingConfig(String),
 }
 
 #[derive(Debug, Deserialize)]
@@ -121,12 +131,12 @@ fn parse_args(
     author: Option<String>,
     share_image: Option<String>,
 ) -> Result<Config> {
-    let entries = entries.ok_or(ParserError::MissingArg("entries".to_string()))?;
-    let template_dir = template_dir.ok_or(ParserError::MissingArg("template_dir".to_string()))?;
-    let src = src.ok_or(ParserError::MissingArg("src".to_string()))?;
-    let dest = dest.ok_or(ParserError::MissingArg("dest".to_string()))?;
-    let title = title.ok_or(ParserError::MissingArg("title".to_string()))?;
-    let url = url.ok_or(ParserError::MissingArg("url".to_string()))?;
+    let entries = entries.ok_or(CliError::MissingArg("entries".to_string()))?;
+    let template_dir = template_dir.ok_or(CliError::MissingArg("template_dir".to_string()))?;
+    let src = src.ok_or(CliError::MissingArg("src".to_string()))?;
+    let dest = dest.ok_or(CliError::MissingArg("dest".to_string()))?;
+    let title = title.ok_or(CliError::MissingArg("title".to_string()))?;
+    let url = url.ok_or(CliError::MissingArg("url".to_string()))?;
     Ok(Config {
         entries,
         template_dir,
@@ -141,14 +151,20 @@ fn parse_args(
     })
 }
 
-fn find_config(p: PathBuf) -> Result<PathBuf> {
+// TODO: Differentiate between an error parsing and a missing file
+fn find_config(p: PathBuf, config: &Option<String>) -> Option<String> {
+    let config_path = match config {
+        Some(config) => PathBuf::from(config),
+        None => p.join(PathBuf::from(CONFIG_DEFAULT)),
+    };
+    match fs::read_to_string(config_path) {
+        Ok(data) => Some(data),
+        Err(_) => None,
+    }
 }
 
 fn main() -> Result<()> {
-    env_logger::builder()
-        .format(log_format_pretty)
-        .try_init()
-        .into_diagnostic()?;
+    env_logger::builder().format(log_format_pretty).try_init()?;
 
     let args = Args::parse();
     log::debug!("Running: {:?}", args.action);
@@ -169,8 +185,8 @@ fn main() -> Result<()> {
                     share_image,
                 },
         } => {
-            let maybe_config = find_config(std::env::current_dir())?;
-            let config_data: Config = match config {
+            let cf = find_config(std::env::current_dir()?, &config);
+            let config_data: Config = match cf {
                 Some(config) => {
                     let data = fs::read_to_string(config)?;
                     let mut data: Config = toml::from_str(&data)?;
@@ -219,9 +235,29 @@ fn main() -> Result<()> {
                 Err(e) => log::error!("{:?}", e),
             };
             Ok(())
-        },
-        Action::Create { action: CreateCommand::Create { config }, } => {
+        }
+        Action::Create {
+            action: CreateCommand::Create { config, title },
+        } => {
+            let config = find_config(std::env::current_dir()?, &config).ok_or(
+                CliError::MissingConfig(config.unwrap_or(CONFIG_DEFAULT.to_string())),
+            )?;
+            let data: Config = toml::from_str(&config)?;
+
+            let pm = PageMetadata {
+                date: Local::now().into(),
+                tag_list: [].to_vec(),
+                title: "Page Title".to_string(),
+                share_image: None,
+                hero_image: None,
+                author: data.author,
+                description: None,
+            };
+            let meta = toml::to_string(&pm)?;
+            let page_data = format!("{HEADER_DELIMITER}\n{meta}\n{HEADER_DELIMITER}\n");
+            let new_file = PathBuf::from(data.src).join(title.unwrap_or("untitled.md".to_string()));
+            fs::write(new_file, page_data)?;
             Ok(())
-        },
+        }
     }
 }

@@ -62,15 +62,15 @@ struct TagData {
     tag: String,
 }
 
-#[derive(Debug, Deserialize)]
-struct PageMetadata {
-    date: DateTime<FixedOffset>,
-    tag_list: Vec<String>,
-    title: String,
-    share_image: Option<String>,
-    hero_image: Option<String>,
-    author: Option<String>,
-    description: Option<String>,
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PageMetadata {
+    pub date: DateTime<FixedOffset>,
+    pub tag_list: Vec<String>,
+    pub title: String,
+    pub share_image: Option<String>,
+    pub hero_image: Option<String>,
+    pub author: Option<String>,
+    pub description: Option<String>,
 }
 
 #[derive(Debug)]
@@ -91,7 +91,7 @@ enum BuilderError {
     BadURL,
 }
 
-const HEADER_DELIMITER: &str = "---";
+pub const HEADER_DELIMITER: &str = "---";
 const DEFAULT_TRUNCATED: u32 = 300;
 
 impl<'blog> Builder<'blog> {

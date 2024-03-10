@@ -3,6 +3,10 @@ name = "site-gen"
 version = "2.0.0"
 authors = ["Todd Kennedy <todd@selfassembled.org>"]
 edition = "2021"
+license = "Apache-2.0"
+description = "A static site generator using Handlebars templates"
+readme = "README.md"
+repository = "https://github.com/toddself/site-gen"
 
 [dependencies]
 chrono = { version = "0.4", features = ["serde"] }
@@ -17,5 +21,5 @@ serde = { version = "1.0.196", features = ["derive"] }
 toml = "0.8.10"
 thiserror = "1.0.56"
 url = { version = "2.5.0", features = ["serde"] }
-env_logger = "0.11.3"
-log = "0.4.21"
+env_logger = { version = "0.9.3" }
+log = { version = "0.4.17", features = ["kv_unstable_serde"] }
